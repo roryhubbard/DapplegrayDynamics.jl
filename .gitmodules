@@ -1,0 +1,3 @@
+[submodule "RobotDynamics.jl"]
+	path = RobotDynamics.jl
+	url = https://github.com/RoboticExplorationLab/RobotDynamics.jl.git
