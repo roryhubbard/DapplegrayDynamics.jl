@@ -4,3 +4,6 @@
 [submodule "TrajectoryOptimization.jl"]
 	path = TrajectoryOptimization.jl
 	url = https://github.com/RoboticExplorationLab/TrajectoryOptimization.jl.git
+[submodule "Altro.jl"]
+	path = Altro.jl
+	url = https://github.com/RoboticExplorationLab/Altro.jl.git
