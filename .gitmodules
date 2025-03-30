@@ -7,3 +7,6 @@
 [submodule "Altro.jl"]
 	path = Altro.jl
 	url = https://github.com/RoboticExplorationLab/Altro.jl.git
+[submodule "RobotZoo.jl"]
+	path = RobotZoo.jl
+	url = https://github.com/RoboticExplorationLab/RobotZoo.jl.git
