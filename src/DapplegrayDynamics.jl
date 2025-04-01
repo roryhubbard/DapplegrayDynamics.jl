@@ -16,7 +16,7 @@ function swingup()
     m = control_dim(model)
 
     N = 101
-    tf = 3.0           # final time (sec)
+    tf = 5.0           # final time (sec)
     dt = tf / (N - 1)  # time step (sec)
 
     # Objective
