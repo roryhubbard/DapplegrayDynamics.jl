@@ -1,6 +1,6 @@
 module DapplegrayDynamics
 
-import RobotZoo.Cartpole
+import RobotZoo.Pendulum
 using Altro
 using LinearAlgebra
 using RobotDynamics
@@ -11,7 +11,7 @@ export swingup
 
 
 function swingup()
-    model = Cartpole()
+    model = Pendulum()
     n = state_dim(model)
     m = control_dim(model)
 
@@ -21,8 +21,7 @@ function swingup()
 
     # Objective
     x0 = @SVector zeros(n)
-#    xf = @SVector [π, 0]  # final state
-    xf = @SVector [0, pi, 0, 0]  # i.e. swing up
+    xf = @SVector [π, 0]  # swing up
 
     Q = 0.01 * Diagonal(@SVector ones(n)) * dt
     Qf = 100.0 * Diagonal(@SVector ones(n))
