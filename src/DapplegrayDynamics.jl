@@ -24,9 +24,9 @@ function swingup()
 #    xf = @SVector [π, 0]  # final state
     xf = @SVector [0, pi, 0, 0]  # i.e. swing up
 
-    Q = 1.0e-2*Diagonal(@SVector ones(n)) * dt
-    Qf = 100.0*Diagonal(@SVector ones(n))
-    R = 1.0e-1*Diagonal(@SVector ones(m)) * dt
+    Q = 0.01 * Diagonal(@SVector ones(n)) * dt
+    Qf = 100.0 * Diagonal(@SVector ones(n))
+    R = 0.1 * Diagonal(@SVector ones(m)) * dt
     objective = LQRObjective(Q, R, Qf, xf, N);
 
     # Create our list of constraints
@@ -51,7 +51,7 @@ function swingup()
 
     opts = SolverOptions(
         cost_tolerance_intermediate=1e-2,
-        penalty_scaling=10.,
+        penalty_scaling=10.0,
         penalty_initial=1.0
     )
 
