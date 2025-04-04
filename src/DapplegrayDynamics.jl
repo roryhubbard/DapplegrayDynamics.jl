@@ -46,7 +46,7 @@ function swingup()
     u0 = @SVector fill(0.01,m)
     U0 = [u0 for k = 1:N-1]
     initial_controls!(prob, U0)
-#    rollout!(prob)
+    rollout!(prob)
 
     opts = SolverOptions(
         cost_tolerance_intermediate=1e-2,
@@ -55,7 +55,7 @@ function swingup()
     )
 
     altro = ALTROSolver(prob, opts)
-#    set_options!(altro, show_summary=true)
+    set_options!(altro, show_summary=true)
     solve!(altro);
 
     # Get some info on the solve
