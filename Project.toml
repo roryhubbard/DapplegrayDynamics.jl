@@ -5,6 +5,7 @@ version = "1.0.0-DEV"
 
 [deps]
 Altro = "5dcf52e5-e2fb-48e0-b826-96f46d2e3e73"
+Clarabel = "61c947e1-3e6d-4ee4-985a-eec8c727bd6e"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 RobotDynamics = "38ceca67-d8d3-44e8-9852-78a5596522e1"
