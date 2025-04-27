@@ -63,10 +63,6 @@ function swingup()
     cost(altro)           # 1.539
     iterations(altro)     # 44
 
-    # Extract the solution
-    X = states(altro)
-    U = controls(altro)
-
     # Extract the solver statistics
     stats = Altro.stats(altro)   # alternatively, solver.stats
     stats.iterations             # 44, equivalent to iterations(solver)
@@ -76,6 +72,11 @@ function swingup()
     stats.c_max[end]             # terminal constraint satisfaction
     stats.gradient[end]          # terminal gradient of the Lagrangian
     dstats = Dict(stats)         # get the per-iteration stats as a dictionary (can be converted to DataFrame)
+
+    # Extract the solution
+    X = states(altro)
+    U = controls(altro)
+    altro
 end
 
 end
