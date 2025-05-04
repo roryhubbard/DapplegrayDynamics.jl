@@ -96,36 +96,36 @@ function swingup(method::Symbol = :hermite_simpson)
 
     # Control bounds
     ubnd = 3.0
-    bnd = BoundConstraint(n, m, u_min=-ubnd, u_max=ubnd)
+    bnd = BoundConstraint(n, m, u_min = -ubnd, u_max = ubnd)
     add_constraint!(constraints, bnd, 1:N-1)
 
     # Construct problem depending on method
     prob = if method == :rk4
-        Problem(model, objective, x0, tf; constraints=constraints)
+        Problem(model, objective, x0, tf; constraints = constraints)
     elseif method == :hermite_simpson
         collocation_constraints = HermiteSimpsonConstraint(model, dt)
         add_constraint!(constraints, collocation_constraints, 1:N-1)
-        Problem(model, objective, x0, tf; constraints=constraints)
+        Problem(model, objective, x0, tf; constraints = constraints)
     else
         error("Unsupported method: $method. Choose :rk4 or :hermite_simpson.")
     end
 
     # Initialization
     u0 = @SVector fill(0.01, m)
-    U0 = [u0 for _ in 1:N-1]
+    U0 = [u0 for _ = 1:N-1]
     initial_controls!(prob, U0)
     rollout!(prob)
 
     # Solver options
     opts = SolverOptions(
-        cost_tolerance_intermediate=1e-2,
-        penalty_scaling=10.0,
-        penalty_initial=1.0
+        cost_tolerance_intermediate = 1e-2,
+        penalty_scaling = 10.0,
+        penalty_initial = 1.0,
     )
 
     # Solve
     altro = ALTROSolver(prob, opts)
-    set_options!(altro, show_summary=true)
+    set_options!(altro, show_summary = true)
     solve!(altro)
 
     # Access result
