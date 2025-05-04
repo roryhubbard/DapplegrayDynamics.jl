@@ -9,8 +9,67 @@ using TrajectoryOptimization
 
 export swingup
 
+"""
+Interface: Any constraint must implement the following interface:
 
-function swingup(method::Symbol = :rk4)
+n = RobotDynamics.state_dim(::MyCon)
+m = RobotDynamics.control_dim(::MyCon)
+p = RobotDynamics.output_dim(::MyCon)
+TrajectoryOptimization.sense(::MyCon)::ConstraintSense
+c = RobotDynamics.evaluate(::MyCon, x, u)
+RobotDynamics.evaluate!(::MyCon, c, x, u)
+"""
+struct HermiteSimpsonConstraint{M,T} <: TrajectoryOptimization.StageConstraint
+    model::M
+    dt::T
+end
+# State and control dimensions
+RobotDynamics.state_dim(con::HermiteSimpsonConstraint) = state_dim(con.model)
+RobotDynamics.control_dim(con::HermiteSimpsonConstraint) = control_dim(con.model)
+RobotDynamics.output_dim(con::HermiteSimpsonConstraint) = state_dim(con.model)
+
+# Constraint sense: this is an equality constraint
+TrajectoryOptimization.sense(::HermiteSimpsonConstraint) = ZeroCone() # ↔ Equality()
+
+function hermite_simpson_compressed(model, dt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
+    fₖ = RobotDynamics.evaluate(model, xₖ, uₖ)
+    fₖ₊₁ = RobotDynamics.evaluate(model, xₖ₊₁, uₖ₊₁)
+
+    # We could add the collocation point as an extra decision varaible and
+    # constraint. This would be "separated form". Here we are implementing
+    # "compressed form" where we calculate `fcol` and jam it into the constraint
+    # for the integral of the system dynamics.
+    xcol = 0.5 * (xₖ + xₖ₊₁) + dt / 8 * (fₖ - fₖ₊₁)
+    ucol = 0.5 * (uₖ + uₖ₊₁)
+    fcol = RobotDynamics.evaluate(model, xcol, ucol)
+
+    # equality constraint: xₖ₊₁ - xₖ = (dt / 6) * (fₖ + 4fcol + fₖ₊₁)
+    SVector{length(xₖ)}(xₖ₊₁ - xₖ - (dt / 6) * (fₖ + 4fcol + fₖ₊₁))
+end
+
+function RobotDynamics.evaluate(
+    con::HermiteSimpsonConstraint,
+    xₖ::AbstractVector,
+    uₖ::AbstractVector,
+    xₖ₊₁::AbstractVector,
+    uₖ₊₁::AbstractVector,
+)
+    hermite_simpson_compressed(con.model, con.dt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
+end
+
+function RobotDynamics.evaluate!(
+    con::HermiteSimpsonConstraint,
+    c::AbstractVector,
+    xₖ::AbstractVector,
+    uₖ::AbstractVector,
+    xₖ₊₁::AbstractVector,
+    uₖ₊₁::AbstractVector,
+)
+    copyto!(c, hermite_simpson_compressed(con.model, con.dt, xₖ, uₖ, xₖ₊₁, uₖ₊₁))
+    c
+end
+
+function swingup(method::Symbol = :hermite_simpson)
     model = Pendulum()
     n = state_dim(model)
     m = control_dim(model)
@@ -44,9 +103,9 @@ function swingup(method::Symbol = :rk4)
     prob = if method == :rk4
         Problem(model, objective, x0, tf; constraints=constraints)
     elseif method == :hermite_simpson
-        # Placeholder: HermiteSimpsonConstraint needs to be implemented separately
-        hs_constraint = HermiteSimpsonConstraint(model, dt, N)
-        Problem(model, objective, x0, tf; constraints=constraints, dynamics=hs_constraint)
+        collocation_constraints = HermiteSimpsonConstraint(model, dt)
+        add_constraint!(constraints, collocation_constraints, 1:N-1)
+        Problem(model, objective, x0, tf; constraints=constraints)
     else
         error("Unsupported method: $method. Choose :rk4 or :hermite_simpson.")
     end
