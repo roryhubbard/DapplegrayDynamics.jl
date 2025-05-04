@@ -69,7 +69,13 @@ function RobotDynamics.evaluate!(
     c
 end
 
-function swingup(method::Symbol = :rk4)
+struct DapplegraySQP{T} <: ConstrainedSolver{T}
+    opts::SolverOptions{T}
+    stats::SolverStats{T}
+    problem::Problem
+end
+
+function swingup(method::Symbol = :altro)
     model = Pendulum()
     n = state_dim(model)
     m = control_dim(model)
@@ -100,14 +106,28 @@ function swingup(method::Symbol = :rk4)
     add_constraint!(constraints, bnd, 1:N-1)
 
     # Construct problem depending on method
-    prob = if method == :rk4
+    prob = if method == :altro
         Problem(model, objective, x0, tf; constraints = constraints)
-    elseif method == :hermite_simpson
+    elseif method == :sqp
         collocation_constraints = HermiteSimpsonConstraint(model, dt)
         add_constraint!(constraints, collocation_constraints, 1:N-1)
         Problem(model, objective, x0, tf; constraints = constraints)
     else
-        error("Unsupported method: $method. Choose :rk4 or :hermite_simpson.")
+        error("Unsupported method: $method. Choose :altro or :sqp.")
+    end
+
+    # Construct solver depending on method
+    solver = if method == :altro
+        opts = SolverOptions(
+            cost_tolerance_intermediate = 1e-2,
+            penalty_scaling = 10.0,
+            penalty_initial = 1.0,
+        )
+        ALTROSolver(prob, opts)
+    elseif method == :sqp
+        DapplegraySQP(prob)
+    else
+        error("Unsupported method: $method. Choose :altro or :sqp.")
     end
 
     # Initialization
@@ -116,22 +136,10 @@ function swingup(method::Symbol = :rk4)
     initial_controls!(prob, U0)
     rollout!(prob)
 
-    # Solver options
-    opts = SolverOptions(
-        cost_tolerance_intermediate = 1e-2,
-        penalty_scaling = 10.0,
-        penalty_initial = 1.0,
-    )
+    set_options!(solver, show_summary = true)
+    solve!(solver)
 
-    # Solve
-    altro = ALTROSolver(prob, opts)
-    set_options!(altro, show_summary = true)
-    solve!(altro)
-
-    # Access result
-    X = states(altro)
-    U = controls(altro)
-    return altro
+    prob
 end
 
 end
