@@ -69,7 +69,7 @@ function RobotDynamics.evaluate!(
     c
 end
 
-function swingup(method::Symbol = :hermite_simpson)
+function swingup(method::Symbol = :rk4)
     model = Pendulum()
     n = state_dim(model)
     m = control_dim(model)
