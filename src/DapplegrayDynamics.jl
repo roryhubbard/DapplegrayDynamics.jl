@@ -75,6 +75,38 @@ struct DapplegraySQP{T} <: ConstrainedSolver{T}
     problem::Problem
 end
 
+function build_lagrangian(
+    𝐟::AbstractObjective,
+    𝒉::Vector{AbstractConstraint},
+    𝒈::Vector{AbstractConstraint},
+    𝒗::Vector{T},
+    𝝀::Vector{T},
+)
+    𝐟 + 𝒗'𝒉 + 𝝀'𝒈
+end
+
+function solve!(solver::DapplegraySQP)
+    for k = 1:10 # TODO: repeat until convergence criteria is met
+        𝐟= get_objective(solver)
+        𝒉 = equality_constraints(solver)
+        𝒈 = inequality_constraints(solver)
+        𝒗 = equality_dual_vector(solver)
+        𝝀 = inequality_dual_vector(solver)
+        ℒ = build_lagrangian(𝐟, 𝒉, 𝒈, 𝒗, 𝝀)
+        ▽ₓf= gradient(𝐟)
+        ▽ₓ𝒉 = gradient(𝒉)
+        ▽ₓ𝒈 = gradient(𝒈)
+        # ▽ₓℒ = gradian(ℒ)
+        ▽ₓℒ = ▽ₓf + ▽ₓ𝒉'𝒗 + ▽ₓ𝒈'𝝀
+        ▽²ₓₓℒ = hessian(▽ₓℒ)
+        𝚫𝒙ₖ = QPdecisionvariables(solver)
+        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = solve_qp(...)
+        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
+        set_𝒗!(solver, 𝒗ₖ₊₁)
+        set_𝝀!(solver, 𝝀ₖ₊₁)
+    end
+end
+
 function swingup(method::Symbol = :altro)
     model = Pendulum()
     n = state_dim(model)
