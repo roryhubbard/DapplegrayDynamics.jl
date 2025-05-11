@@ -127,9 +127,11 @@ function solve!(solver::DapplegraySQP)
 
                     k = K[j]
                     x = RobotDynamics.state(k)
+                    n = RobotDynamics.state_dim(k)
                     u = RobotDynamics.control(k)
-                    println("state: ", x)
-                    println("control: ", u)
+                    m = RobotDynamics.control_dim(k)
+                    println("state: $n $x")
+                    println("control: $m $u")
 
                     y = RobotDynamics.evaluate(constraint, k)
                     println("evaluate: ", y)
@@ -138,9 +140,9 @@ function solve!(solver::DapplegraySQP)
                     RobotDynamics.evaluate!(constraint, y, k)
                     println("evaluate!: ", y)
 
-#                    constraint_jacobian!(sig::FunctionSignature, diff::DiffMethod, con, jac, val, args...)
-#                    jacobian = TrajectoryOptimization.constraint_jacobian!(constraint, jac, val)
-#                    println("jacobian: ", jacobian)
+                    J = Matrix{Float64}(undef, n, n + m)
+                    RobotDynamics.jacobian!(constraint, J, y, k)
+                    println("jacobian: ", J)
                 end
                 println()
             end
