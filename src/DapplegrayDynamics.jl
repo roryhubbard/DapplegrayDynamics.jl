@@ -118,6 +118,9 @@ function solve!(solver::DapplegraySQP)
             p = RobotDynamics.output_dim(constraint)
             println("output_dim: ", p)
 
+            input_dim = RobotDynamics.input_dim(constraint)
+            println("input_dim: ", input_dim)
+
             sense = TrajectoryOptimization.sense(constraint)
             println("sense: ", sense)
 
@@ -140,9 +143,17 @@ function solve!(solver::DapplegraySQP)
                     RobotDynamics.evaluate!(constraint, y, k)
                     println("evaluate!: ", y)
 
-                    J = Matrix{Float64}(undef, n, n + m)
-                    RobotDynamics.jacobian!(constraint, J, y, k)
-                    println("jacobian: ", J)
+                    𝑱 = Matrix{Float64}(undef, p, input_dim)
+                    RobotDynamics.jacobian!(constraint, 𝑱, y, k)
+                    println("jacobian: ", 𝑱)
+
+                    𝑯 = Matrix{Float64}(undef, input_dim, input_dim)
+                    𝝀 = zeros(p)
+                    for i = 1:p
+#                        ∇jacobian!(con::GoalConstraint, H, λ, c, z::AbstractKnotPoint)
+                        𝑯 += 𝝀[i] .* ∇jacobian(y[i], k)
+                    end
+                    println("sum of hessians: ", 𝑯)
                 end
                 println()
             end
