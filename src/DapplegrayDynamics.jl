@@ -31,7 +31,7 @@ RobotDynamics.control_dim(con::HermiteSimpsonConstraint) = control_dim(con.model
 RobotDynamics.output_dim(con::HermiteSimpsonConstraint) = state_dim(con.model)
 
 # Constraint sense: this is an equality constraint
-TrajectoryOptimization.sense(::HermiteSimpsonConstraint) = ZeroCone() # ↔ Equality()
+TrajectoryOptimization.sense(::HermiteSimpsonConstraint) = Equality() # ↔ ZeroCone()
 
 function hermite_simpson_compressed(model, dt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
     fₖ = RobotDynamics.evaluate(model, xₖ, uₖ)
@@ -91,11 +91,58 @@ function solve!(solver::DapplegraySQP)
     for k = 1:10 # TODO: repeat until convergence criteria is met
         𝒇 = get_objective(solver.problem)
         constraints = get_constraints(solver.problem)
+
+        Z = get_trajectory(solver.problem)
+        println("trajectory: ", Z)
+
+        X = states(Z)
+        println("X: ", X)
+
+        U = controls(Z)
+        println("U: ", U)
+
+        times = gettimes(Z)
+        println("times: ", times)
+
+        println()
+
         for constraint ∈ constraints
             println(constraint)
-            println("AAAA")
+
+            T = typeof(constraint)
+            println("type: ", T)
+
+            if !(T <: TrajectoryOptimization.ControlConstraint)
+                n = RobotDynamics.state_dim(constraint)
+                println("state_dim: ", n)
+            end
+
+            if !(T <: TrajectoryOptimization.StateConstraint)
+                m = RobotDynamics.control_dim(constraint)
+                println("control_dim: ", m)
+            end
+
+            p = RobotDynamics.output_dim(constraint)
+            println("output_dim: ", p)
+
+            sense = TrajectoryOptimization.sense(constraint)
+            println("sense: ", sense)
+
+            if !(T <: HermiteSimpsonConstraint)
+#                jacobian = TrajectoryOptimization.constraint_jacobian!(sig::FunctionSignature, diff::DiffMethod, con, jac, val)
+#                println("jacobian: ", jacobian)
+
+#                c = RobotDynamics.evaluate(constraint, x, u)
+#                y = Vector{Float64}(undef, p)
+#                RobotDynamics.evaluate!(constraint, y, x, u)
+#                println!()
+            end
+
+            println()
         end
+
         return
+
 #        𝒉 = equality_constraints(constraints)
 #        𝒈 = inequality_constraints(constraints)
 #        𝒗 = equality_dual_vector(solver)
@@ -167,7 +214,7 @@ function swingup(method::Symbol = :sqp)
 
     # Control bounds
     ubnd = 3.0
-    bnd = BoundConstraint(n, m, u_min = -ubnd, u_max = ubnd)
+    bnd = ControlBound(m, u_min = -ubnd, u_max = ubnd)
     add_constraint!(constraints, bnd, 1:N-1)
 
     # Construct problem depending on method
