@@ -88,12 +88,15 @@ end
 #end
 
 function solve!(solver::DapplegraySQP)
-    for k = 1:10 # TODO: repeat until convergence criteria is met
+    for _ = 1:10 # TODO: repeat until convergence criteria is met
         𝒇 = get_objective(solver.problem)
         constraints = get_constraints(solver.problem)
 
         Z = get_trajectory(solver.problem)
         println("trajectory: ", Z)
+
+        K = RobotDynamics.getdata(Z)
+        println("K: ", K)
 
         X = states(Z)
         println("X: ", X)
@@ -103,24 +106,14 @@ function solve!(solver::DapplegraySQP)
 
         times = gettimes(Z)
         println("times: ", times)
-
         println()
 
-        for constraint ∈ constraints
+        for (constraintindices, constraint) ∈ zip(constraints)
+            println("################### CONSTRAINT ###################")
             println(constraint)
 
             T = typeof(constraint)
             println("type: ", T)
-
-            if !(T <: TrajectoryOptimization.ControlConstraint)
-                n = RobotDynamics.state_dim(constraint)
-                println("state_dim: ", n)
-            end
-
-            if !(T <: TrajectoryOptimization.StateConstraint)
-                m = RobotDynamics.control_dim(constraint)
-                println("control_dim: ", m)
-            end
 
             p = RobotDynamics.output_dim(constraint)
             println("output_dim: ", p)
@@ -129,13 +122,27 @@ function solve!(solver::DapplegraySQP)
             println("sense: ", sense)
 
             if !(T <: HermiteSimpsonConstraint)
-#                jacobian = TrajectoryOptimization.constraint_jacobian!(sig::FunctionSignature, diff::DiffMethod, con, jac, val)
-#                println("jacobian: ", jacobian)
+                for j ∈ constraintindices
+                    println("j: ", j)
 
-#                c = RobotDynamics.evaluate(constraint, x, u)
-#                y = Vector{Float64}(undef, p)
-#                RobotDynamics.evaluate!(constraint, y, x, u)
-#                println!()
+                    k = K[j]
+                    x = RobotDynamics.state(k)
+                    u = RobotDynamics.control(k)
+                    println("state: ", x)
+                    println("control: ", u)
+
+                    y = RobotDynamics.evaluate(constraint, k)
+                    println("evaluate: ", y)
+
+                    y = Vector{Float64}(undef, p)
+                    RobotDynamics.evaluate!(constraint, y, k)
+                    println("evaluate!: ", y)
+
+#                    constraint_jacobian!(sig::FunctionSignature, diff::DiffMethod, con, jac, val, args...)
+#                    jacobian = TrajectoryOptimization.constraint_jacobian!(constraint, jac, val)
+#                    println("jacobian: ", jacobian)
+                end
+                println()
             end
 
             println()
@@ -215,6 +222,7 @@ function swingup(method::Symbol = :sqp)
     # Control bounds
     ubnd = 3.0
     bnd = ControlBound(m, u_min = -ubnd, u_max = ubnd)
+#    bnd = BoundConstraint(n, m, u_min = -ubnd, u_max = ubnd)
     add_constraint!(constraints, bnd, 1:N-1)
 
     # Construct problem depending on method
