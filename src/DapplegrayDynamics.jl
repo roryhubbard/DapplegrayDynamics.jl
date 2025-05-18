@@ -3,12 +3,12 @@ module DapplegrayDynamics
 import RobotZoo.Pendulum
 using Altro
 using Clarabel
+using ForwardDiff
 using LinearAlgebra
 using RobotDynamics
 using SparseArrays
 using StaticArrays
 using TrajectoryOptimization
-using ForwardDiff
 
 export swingup
 
@@ -143,21 +143,14 @@ function solve!(solver::DapplegraySQP)
                     y = RobotDynamics.evaluate(constraint, k)
                     println("evaluate: ", y)
 
-                    y = Vector{Float64}(undef, p)
-                    RobotDynamics.evaluate!(constraint, y, k)
-                    println("evaluate!: ", y)
-
                     𝑱 = Matrix{Float64}(undef, p, input_dim)
                     y = Vector{Float64}(undef, p)
                     RobotDynamics.jacobian!(constraint, 𝑱, y, k)
                     println("jacobian: ", 𝑱)
-                    println("evaluate!: ", y)
 
                     𝑯 = Matrix{Float64}(undef, input_dim, input_dim)
-                    𝝀 = zeros(p)
-                    z = RobotDynamics.getdata(k)
+                    𝝀 = zeros(p) # TODO: get this the right way
                     z_ref = RobotDynamics.getinput(input_type, k)  # this will be x, u, or [x; u]
-                    H = zeros(input_dim, input_dim)
                     f(zvec) = RobotDynamics.evaluate(constraint, zvec)
                     for i = 1:p
                         fᵢ(zvec) = f(zvec)[i]  # scalar function
@@ -167,7 +160,6 @@ function solve!(solver::DapplegraySQP)
                     end
                     println("sum of hessians: ", 𝑯)
                 end
-                println()
             end
 
             println()
