@@ -8,6 +8,7 @@ using RobotDynamics
 using SparseArrays
 using StaticArrays
 using TrajectoryOptimization
+using ForwardDiff
 
 export swingup
 
@@ -121,6 +122,9 @@ function solve!(solver::DapplegraySQP)
             input_dim = RobotDynamics.input_dim(constraint)
             println("input_dim: ", input_dim)
 
+            input_type = RobotDynamics.functioninputs(constraint)
+            println("input_type: ", input_type)
+
             sense = TrajectoryOptimization.sense(constraint)
             println("sense: ", sense)
 
@@ -144,14 +148,22 @@ function solve!(solver::DapplegraySQP)
                     println("evaluate!: ", y)
 
                     𝑱 = Matrix{Float64}(undef, p, input_dim)
+                    y = Vector{Float64}(undef, p)
                     RobotDynamics.jacobian!(constraint, 𝑱, y, k)
                     println("jacobian: ", 𝑱)
+                    println("evaluate!: ", y)
 
                     𝑯 = Matrix{Float64}(undef, input_dim, input_dim)
                     𝝀 = zeros(p)
+                    z = RobotDynamics.getdata(k)
+                    z_ref = RobotDynamics.getinput(input_type, k)  # this will be x, u, or [x; u]
+                    H = zeros(input_dim, input_dim)
+                    f(zvec) = RobotDynamics.evaluate(constraint, zvec)
                     for i = 1:p
-#                        ∇jacobian!(con::GoalConstraint, H, λ, c, z::AbstractKnotPoint)
-                        𝑯 += 𝝀[i] .* ∇jacobian(y[i], k)
+                        fᵢ(zvec) = f(zvec)[i]  # scalar function
+                        Hᵢ = ForwardDiff.hessian(fᵢ, z_ref)
+                        print("row hessian: ", Hᵢ)
+                        𝑯 += 𝝀[i] .* Hᵢ
                     end
                     println("sum of hessians: ", 𝑯)
                 end
