@@ -1,40 +1,72 @@
 module DapplegrayDynamics
 
-import RobotZoo.Pendulum
-using Altro
 using Clarabel
 using ForwardDiff
 using LinearAlgebra
-using RobotDynamics
+using RigidBodyDynamics
 using SparseArrays
 using StaticArrays
-using TrajectoryOptimization
 
-export swingup
+export swingup, doublependulum
 
-"""
-Interface: Any constraint must implement the following interface:
 
-n = RobotDynamics.state_dim(::MyCon)
-m = RobotDynamics.control_dim(::MyCon)
-p = RobotDynamics.output_dim(::MyCon)
-TrajectoryOptimization.sense(::MyCon)::ConstraintSense
-c = RobotDynamics.evaluate(::MyCon, x, u)
-RobotDynamics.evaluate!(::MyCon, c, x, u)
-"""
-struct HermiteSimpsonConstraint{M,T} <: TrajectoryOptimization.StageConstraint
-    model::M
-    dt::T
+function doublependulum()::Mechanism
+    g = -9.81 # gravitational acceleration in z-direction
+    world = RigidBody{Float64}("world")
+    doublependulum = Mechanism(world; gravity = SVector(0, 0, g))
+
+    axis = SVector(0., 1., 0.) # joint axis
+    I_1 = 0.333 # moment of inertia about joint axis
+    c_1 = -0.5 # center of mass location with respect to joint axis
+    m_1 = 1. # mass
+    frame1 = CartesianFrame3D("upper_link") # the reference frame in which the spatial inertia will be expressed
+    inertia1 = SpatialInertia(frame1,
+        moment=I_1 * axis * axis',
+        com=SVector(0, 0, c_1),
+        mass=m_1)
+
+    upperlink = RigidBody(inertia1)
+    shoulder = Joint("shoulder", Revolute(axis))
+    before_shoulder_to_world = one(Transform3D,
+        frame_before(shoulder), default_frame(world))
+    attach!(doublependulum, world, upperlink, shoulder,
+        joint_pose = before_shoulder_to_world)
+
+    l_1 = -1. # length of the upper link
+    I_2 = 0.333 # moment of inertia about joint axis
+    c_2 = -0.5 # center of mass location with respect to joint axis
+    m_2 = 1. # mass
+    inertia2 = SpatialInertia(CartesianFrame3D("lower_link"),
+        moment=I_2 * axis * axis',
+        com=SVector(0, 0, c_2),
+        mass=m_2)
+    lowerlink = RigidBody(inertia2)
+    elbow = Joint("elbow", Revolute(axis))
+    before_elbow_to_after_shoulder = Transform3D(
+        frame_before(elbow), frame_after(shoulder), SVector(0, 0, l_1))
+    attach!(doublependulum, upperlink, lowerlink, elbow,
+        joint_pose = before_elbow_to_after_shoulder)
+
+    doublependulum
 end
-# State and control dimensions
-RobotDynamics.state_dim(con::HermiteSimpsonConstraint) = state_dim(con.model)
-RobotDynamics.control_dim(con::HermiteSimpsonConstraint) = control_dim(con.model)
-RobotDynamics.output_dim(con::HermiteSimpsonConstraint) = state_dim(con.model)
 
-# Constraint sense: this is an equality constraint
-TrajectoryOptimization.sense(::HermiteSimpsonConstraint) = Equality() # ↔ ZeroCone()
+function simulate_doublependulum()
+    doublependulum = doublependulum()
+    state = MechanismState(doublependulum)
+    set_configuration!(state, shoulder, 0.3)
+    set_configuration!(state, elbow, 0.4)
+    set_velocity!(state, shoulder, 1.)
+    set_velocity!(state, elbow, 2.)
 
-function hermite_simpson_compressed(model, dt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
+    ts, qs, vs = simulate(state, 5., Δt = 1e-3);
+end
+
+struct HermiteSimpsonConstraint{M,T}
+    model::M
+    Δt::T
+end
+
+function hermite_simpson_compressed(model, Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
     fₖ = RobotDynamics.evaluate(model, xₖ, uₖ)
     fₖ₊₁ = RobotDynamics.evaluate(model, xₖ₊₁, uₖ₊₁)
 
@@ -42,25 +74,25 @@ function hermite_simpson_compressed(model, dt, xₖ, uₖ, xₖ₊₁, uₖ₊�
     # constraint. This would be "separated form". Here we are implementing
     # "compressed form" where we calculate `fcol` and jam it into the constraint
     # for the integral of the system dynamics.
-    xcol = 0.5 * (xₖ + xₖ₊₁) + dt / 8 * (fₖ - fₖ₊₁)
+    xcol = 0.5 * (xₖ + xₖ₊₁) + Δt / 8 * (fₖ - fₖ₊₁)
     ucol = 0.5 * (uₖ + uₖ₊₁)
     fcol = RobotDynamics.evaluate(model, xcol, ucol)
 
-    # equality constraint: xₖ₊₁ - xₖ = (dt / 6) * (fₖ + 4fcol + fₖ₊₁)
-    SVector{length(xₖ)}(xₖ₊₁ - xₖ - (dt / 6) * (fₖ + 4fcol + fₖ₊₁))
+    # equality constraint: xₖ₊₁ - xₖ = (Δt / 6) * (fₖ + 4fcol + fₖ₊₁)
+    SVector{length(xₖ)}(xₖ₊₁ - xₖ - (Δt / 6) * (fₖ + 4fcol + fₖ₊₁))
 end
 
-function RobotDynamics.evaluate(
+function evaluate(
     con::HermiteSimpsonConstraint,
     xₖ::AbstractVector,
     uₖ::AbstractVector,
     xₖ₊₁::AbstractVector,
     uₖ₊₁::AbstractVector,
 )
-    hermite_simpson_compressed(con.model, con.dt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
+    hermite_simpson_compressed(con.model, con.Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
 end
 
-function RobotDynamics.evaluate!(
+function evaluate!(
     con::HermiteSimpsonConstraint,
     c::AbstractVector,
     xₖ::AbstractVector,
@@ -68,7 +100,7 @@ function RobotDynamics.evaluate!(
     xₖ₊₁::AbstractVector,
     uₖ₊₁::AbstractVector,
 )
-    copyto!(c, hermite_simpson_compressed(con.model, con.dt, xₖ, uₖ, xₖ₊₁, uₖ₊₁))
+    copyto!(c, hermite_simpson_compressed(con.model, con.Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁))
     c
 end
 
@@ -87,6 +119,59 @@ end
 #)
 #    𝒇 + 𝒗'𝒉 + 𝝀'𝒈
 #end
+
+function apply_constraint(K, constraintindices, constraint)
+    println("################### CONSTRAINT ###################")
+    println(constraint)
+
+    T = typeof(constraint)
+    println("type: ", T)
+
+    p = RobotDynamics.output_dim(constraint)
+    println("output_dim: ", p)
+
+    input_dim = RobotDynamics.input_dim(constraint)
+    println("input_dim: ", input_dim)
+
+    input_type = RobotDynamics.functioninputs(constraint)
+    println("input_type: ", input_type)
+
+    sense = TrajectoryOptimization.sense(constraint)
+    println("sense: ", sense)
+
+    for j ∈ constraintindices
+        println("j: ", j)
+
+        k = K[j]
+        x = RobotDynamics.state(k)
+        n = RobotDynamics.state_dim(k)
+        u = RobotDynamics.control(k)
+        m = RobotDynamics.control_dim(k)
+        println("state: $n $x")
+        println("control: $m $u")
+
+        y = RobotDynamics.evaluate(constraint, k)
+        println("evaluate: ", y)
+
+        𝑱 = Matrix{Float64}(undef, p, input_dim)
+        y = Vector{Float64}(undef, p)
+        RobotDynamics.jacobian!(constraint, 𝑱, y, k)
+        println("jacobian: ", 𝑱)
+
+        𝑯 = Matrix{Float64}(undef, input_dim, input_dim)
+        𝝀 = zeros(p) # TODO: get this the right way
+        z_ref = RobotDynamics.getinput(input_type, k)  # this will be x, u, or [x; u]
+        f(zvec) = RobotDynamics.evaluate(constraint, zvec)
+        for i = 1:p
+            fᵢ(zvec) = f(zvec)[i]  # scalar function
+            Hᵢ = ForwardDiff.hessian(fᵢ, z_ref)
+            print("row hessian: ", Hᵢ)
+            𝑯 += 𝝀[i] .* Hᵢ
+        end
+        println("sum of hessians: ", 𝑯)
+    end
+end
+
 
 function solve!(solver::DapplegraySQP)
     for _ = 1:10 # TODO: repeat until convergence criteria is met
@@ -110,58 +195,7 @@ function solve!(solver::DapplegraySQP)
         println()
 
         for (constraintindices, constraint) ∈ zip(constraints)
-            println("################### CONSTRAINT ###################")
-            println(constraint)
-
-            T = typeof(constraint)
-            println("type: ", T)
-
-            p = RobotDynamics.output_dim(constraint)
-            println("output_dim: ", p)
-
-            input_dim = RobotDynamics.input_dim(constraint)
-            println("input_dim: ", input_dim)
-
-            input_type = RobotDynamics.functioninputs(constraint)
-            println("input_type: ", input_type)
-
-            sense = TrajectoryOptimization.sense(constraint)
-            println("sense: ", sense)
-
-            if !(T <: HermiteSimpsonConstraint)
-                for j ∈ constraintindices
-                    println("j: ", j)
-
-                    k = K[j]
-                    x = RobotDynamics.state(k)
-                    n = RobotDynamics.state_dim(k)
-                    u = RobotDynamics.control(k)
-                    m = RobotDynamics.control_dim(k)
-                    println("state: $n $x")
-                    println("control: $m $u")
-
-                    y = RobotDynamics.evaluate(constraint, k)
-                    println("evaluate: ", y)
-
-                    𝑱 = Matrix{Float64}(undef, p, input_dim)
-                    y = Vector{Float64}(undef, p)
-                    RobotDynamics.jacobian!(constraint, 𝑱, y, k)
-                    println("jacobian: ", 𝑱)
-
-                    𝑯 = Matrix{Float64}(undef, input_dim, input_dim)
-                    𝝀 = zeros(p) # TODO: get this the right way
-                    z_ref = RobotDynamics.getinput(input_type, k)  # this will be x, u, or [x; u]
-                    f(zvec) = RobotDynamics.evaluate(constraint, zvec)
-                    for i = 1:p
-                        fᵢ(zvec) = f(zvec)[i]  # scalar function
-                        Hᵢ = ForwardDiff.hessian(fᵢ, z_ref)
-                        print("row hessian: ", Hᵢ)
-                        𝑯 += 𝝀[i] .* Hᵢ
-                    end
-                    println("sum of hessians: ", 𝑯)
-                end
-            end
-
+            apply_constraint(Z, constraintindices, constraint)
             println()
         end
 
@@ -211,10 +245,34 @@ function solve!(solver::DapplegraySQP)
     end
 end
 
+lqr_cost(Q,R) = (x,u) -> x'Q*x + u'R*u
+terminal_cost(Q) = (x,_) -> x'Q*x
+## hessian w.r.t to only state even though function sig takes u too
+#dummy_u = nothing              # can also be `SVector{0,Float64}()`
+#f_x = x -> cost(x, dummy_u)    # Rⁿ → ℝ  (u is fixed & unused)
+## current state at knot-point k
+#x_k = @SVector randn(n)        # replace with your real state
+## Hessian w.r.t. x ONLY:   n × n
+#H = ForwardDiff.hessian(f_x, x_k)
+
+function evaluate_costs(costs, x, u)
+    for (f, idx) in costs
+        # TODO: this indexing is going to cause issues with how the cost
+        # functions are currently defined
+        f(x[idx], u[idx])
+    end
+end
+
+function evaluatecosts(costfunctions, x, u)
+    for (inputtype, costfunction, knotpointindices) ∈ costfunctions
+        evaluatecost(inputtype, costfunction, knotpointindices, x, u)
+    end
+end
+
 function swingup(method::Symbol = :sqp)
-    model = Pendulum()
-    n = state_dim(model)
-    m = control_dim(model)
+    model = doublependulum()
+    n = 4 # state dimension
+    m = 1 # control dimension
 
     N = 2
     tf = 2.0           # final time (sec)
@@ -222,12 +280,19 @@ function swingup(method::Symbol = :sqp)
 
     # Objective
     x0 = @SVector zeros(n)
-    xf = @SVector [π, 0]  # swing up
+    xf = @SVector [π, 0, 0, 0]  # swing up
 
     Q = 0.01 * Diagonal(@SVector ones(n)) * dt
     Qf = 100.0 * Diagonal(@SVector ones(n))
     R = 0.1 * Diagonal(@SVector ones(m)) * dt
-    objective = LQRObjective(Q, R, Qf, xf, N)
+
+    objective = [
+        (lqr_cost(Q,R),   1:N-1),
+        (terminal_cost(Qf), N),
+    ]
+
+
+    ################## GREAT BARRIER ##################
 
     # Create constraints
     constraints = ConstraintList(n, m, N)
