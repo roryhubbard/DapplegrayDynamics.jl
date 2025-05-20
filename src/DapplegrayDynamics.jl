@@ -66,21 +66,21 @@ struct HermiteSimpsonConstraint{M,T}
     Δt::T
 end
 
-function hermite_simpson_compressed(model, Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
-    fₖ = RobotDynamics.evaluate(model, xₖ, uₖ)
-    fₖ₊₁ = RobotDynamics.evaluate(model, xₖ₊₁, uₖ₊₁)
-
-    # We could add the collocation point as an extra decision varaible and
-    # constraint. This would be "separated form". Here we are implementing
-    # "compressed form" where we calculate `fcol` and jam it into the constraint
-    # for the integral of the system dynamics.
-    xcol = 0.5 * (xₖ + xₖ₊₁) + Δt / 8 * (fₖ - fₖ₊₁)
-    ucol = 0.5 * (uₖ + uₖ₊₁)
-    fcol = RobotDynamics.evaluate(model, xcol, ucol)
-
-    # equality constraint: xₖ₊₁ - xₖ = (Δt / 6) * (fₖ + 4fcol + fₖ₊₁)
-    SVector{length(xₖ)}(xₖ₊₁ - xₖ - (Δt / 6) * (fₖ + 4fcol + fₖ₊₁))
-end
+#function hermite_simpson_compressed(model::Mechanism, Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
+#    fₖ = RobotDynamics.evaluate(model, xₖ, uₖ)
+#    fₖ₊₁ = RobotDynamics.evaluate(model, xₖ₊₁, uₖ₊₁)
+#
+#    # We could add the collocation point as an extra decision varaible and
+#    # constraint. This would be "separated form". Here we are implementing
+#    # "compressed form" where we calculate `fcol` and jam it into the constraint
+#    # for the integral of the system dynamics.
+#    xcol = 0.5 * (xₖ + xₖ₊₁) + Δt / 8 * (fₖ - fₖ₊₁)
+#    ucol = 0.5 * (uₖ + uₖ₊₁)
+#    fcol = RobotDynamics.evaluate(model, xcol, ucol)
+#
+#    # equality constraint: xₖ₊₁ - xₖ = (Δt / 6) * (fₖ + 4fcol + fₖ₊₁)
+#    SVector{length(xₖ)}(xₖ₊₁ - xₖ - (Δt / 6) * (fₖ + 4fcol + fₖ₊₁))
+#end
 
 function evaluate(
     con::HermiteSimpsonConstraint,
@@ -107,7 +107,7 @@ end
 struct DapplegraySQP
 #    opts::SolverOptions{T}
 #    stats::SolverStats{T}
-    problem::Problem
+#    problem::Problem
 end
 
 #function build_lagrangian{T}(
@@ -120,87 +120,87 @@ end
 #    𝒇 + 𝒗'𝒉 + 𝝀'𝒈
 #end
 
-function apply_constraint(K, constraintindices, constraint)
-    println("################### CONSTRAINT ###################")
-    println(constraint)
-
-    T = typeof(constraint)
-    println("type: ", T)
-
-    p = RobotDynamics.output_dim(constraint)
-    println("output_dim: ", p)
-
-    input_dim = RobotDynamics.input_dim(constraint)
-    println("input_dim: ", input_dim)
-
-    input_type = RobotDynamics.functioninputs(constraint)
-    println("input_type: ", input_type)
-
-    sense = TrajectoryOptimization.sense(constraint)
-    println("sense: ", sense)
-
-    for j ∈ constraintindices
-        println("j: ", j)
-
-        k = K[j]
-        x = RobotDynamics.state(k)
-        n = RobotDynamics.state_dim(k)
-        u = RobotDynamics.control(k)
-        m = RobotDynamics.control_dim(k)
-        println("state: $n $x")
-        println("control: $m $u")
-
-        y = RobotDynamics.evaluate(constraint, k)
-        println("evaluate: ", y)
-
-        𝑱 = Matrix{Float64}(undef, p, input_dim)
-        y = Vector{Float64}(undef, p)
-        RobotDynamics.jacobian!(constraint, 𝑱, y, k)
-        println("jacobian: ", 𝑱)
-
-        𝑯 = Matrix{Float64}(undef, input_dim, input_dim)
-        𝝀 = zeros(p) # TODO: get this the right way
-        z_ref = RobotDynamics.getinput(input_type, k)  # this will be x, u, or [x; u]
-        f(zvec) = RobotDynamics.evaluate(constraint, zvec)
-        for i = 1:p
-            fᵢ(zvec) = f(zvec)[i]  # scalar function
-            Hᵢ = ForwardDiff.hessian(fᵢ, z_ref)
-            print("row hessian: ", Hᵢ)
-            𝑯 += 𝝀[i] .* Hᵢ
-        end
-        println("sum of hessians: ", 𝑯)
-    end
-end
-
-
-function solve!(solver::DapplegraySQP)
-    for _ = 1:10 # TODO: repeat until convergence criteria is met
-        𝒇 = get_objective(solver.problem)
-        constraints = get_constraints(solver.problem)
-
-        Z = get_trajectory(solver.problem)
-        println("trajectory: ", Z)
-
-        K = RobotDynamics.getdata(Z)
-        println("K: ", K)
-
-        X = states(Z)
-        println("X: ", X)
-
-        U = controls(Z)
-        println("U: ", U)
-
-        times = gettimes(Z)
-        println("times: ", times)
-        println()
-
-        for (constraintindices, constraint) ∈ zip(constraints)
-            apply_constraint(Z, constraintindices, constraint)
-            println()
-        end
-
-        return
-
+#function apply_constraint(K, constraintindices, constraint)
+#    println("################### CONSTRAINT ###################")
+#    println(constraint)
+#
+#    T = typeof(constraint)
+#    println("type: ", T)
+#
+#    p = RobotDynamics.output_dim(constraint)
+#    println("output_dim: ", p)
+#
+#    input_dim = RobotDynamics.input_dim(constraint)
+#    println("input_dim: ", input_dim)
+#
+#    input_type = RobotDynamics.functioninputs(constraint)
+#    println("input_type: ", input_type)
+#
+#    sense = TrajectoryOptimization.sense(constraint)
+#    println("sense: ", sense)
+#
+#    for j ∈ constraintindices
+#        println("j: ", j)
+#
+#        k = K[j]
+#        x = RobotDynamics.state(k)
+#        n = RobotDynamics.state_dim(k)
+#        u = RobotDynamics.control(k)
+#        m = RobotDynamics.control_dim(k)
+#        println("state: $n $x")
+#        println("control: $m $u")
+#
+#        y = RobotDynamics.evaluate(constraint, k)
+#        println("evaluate: ", y)
+#
+#        𝑱 = Matrix{Float64}(undef, p, input_dim)
+#        y = Vector{Float64}(undef, p)
+#        RobotDynamics.jacobian!(constraint, 𝑱, y, k)
+#        println("jacobian: ", 𝑱)
+#
+#        𝑯 = Matrix{Float64}(undef, input_dim, input_dim)
+#        𝝀 = zeros(p) # TODO: get this the right way
+#        z_ref = RobotDynamics.getinput(input_type, k)  # this will be x, u, or [x; u]
+#        f(zvec) = RobotDynamics.evaluate(constraint, zvec)
+#        for i = 1:p
+#            fᵢ(zvec) = f(zvec)[i]  # scalar function
+#            Hᵢ = ForwardDiff.hessian(fᵢ, z_ref)
+#            print("row hessian: ", Hᵢ)
+#            𝑯 += 𝝀[i] .* Hᵢ
+#        end
+#        println("sum of hessians: ", 𝑯)
+#    end
+#end
+#
+#
+#function solve!(solver::DapplegraySQP)
+#    for _ = 1:10 # TODO: repeat until convergence criteria is met
+#        𝒇 = get_objective(solver.problem)
+#        constraints = get_constraints(solver.problem)
+#
+#        Z = get_trajectory(solver.problem)
+#        println("trajectory: ", Z)
+#
+#        K = RobotDynamics.getdata(Z)
+#        println("K: ", K)
+#
+#        X = states(Z)
+#        println("X: ", X)
+#
+#        U = controls(Z)
+#        println("U: ", U)
+#
+#        times = gettimes(Z)
+#        println("times: ", times)
+#        println()
+#
+#        for (constraintindices, constraint) ∈ zip(constraints)
+#            apply_constraint(Z, constraintindices, constraint)
+#            println()
+#        end
+#
+#        return
+#
 #        𝒉 = equality_constraints(constraints)
 #        𝒈 = inequality_constraints(constraints)
 #        𝒗 = equality_dual_vector(solver)
@@ -242,8 +242,8 @@ function solve!(solver::DapplegraySQP)
 #        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
 #        set_𝒗!(solver, 𝒗ₖ₊₁)
 #        set_𝝀!(solver, 𝝀ₖ₊₁)
-    end
-end
+#    end
+#end
 
 lqr_cost(Q,R) = (x,u) -> x'Q*x + u'R*u
 terminal_cost(Q) = (x,_) -> x'Q*x
@@ -255,17 +255,11 @@ terminal_cost(Q) = (x,_) -> x'Q*x
 ## Hessian w.r.t. x ONLY:   n × n
 #H = ForwardDiff.hessian(f_x, x_k)
 
-function evaluate_costs(costs, x, u)
+function evaluatecosts(costs, x, u)
     for (f, idx) in costs
         # TODO: this indexing is going to cause issues with how the cost
         # functions are currently defined
         f(x[idx], u[idx])
-    end
-end
-
-function evaluatecosts(costfunctions, x, u)
-    for (inputtype, costfunction, knotpointindices) ∈ costfunctions
-        evaluatecost(inputtype, costfunction, knotpointindices, x, u)
     end
 end
 
@@ -291,56 +285,55 @@ function swingup(method::Symbol = :sqp)
         (terminal_cost(Qf), N),
     ]
 
-
-    ################## GREAT BARRIER ##################
-
     # Create constraints
-    constraints = ConstraintList(n, m, N)
+    constraints = [] 
 
-    # Terminal goal constraint
-    goalcon = GoalConstraint(xf)
-    add_constraint!(constraints, goalcon, N)
-
-    # Control bounds
-    ubnd = 3.0
-    bnd = ControlBound(m, u_min = -ubnd, u_max = ubnd)
-#    bnd = BoundConstraint(n, m, u_min = -ubnd, u_max = ubnd)
-    add_constraint!(constraints, bnd, 1:N-1)
-
-    # Construct problem depending on method
-    prob = if method == :altro
-        Problem(model, objective, x0, tf; constraints = constraints)
-    elseif method == :sqp
-        collocation_constraints = HermiteSimpsonConstraint(model, dt)
-        add_constraint!(constraints, collocation_constraints, 1:N-1)
-        Problem(model, objective, x0, tf; constraints = constraints)
-    else
-        error("Unsupported method: $method. Choose :altro or :sqp.")
-    end
-
-    # Construct solver depending on method
-    solver = if method == :altro
-        opts = SolverOptions(
-            cost_tolerance_intermediate = 1e-2,
-            penalty_scaling = 10.0,
-            penalty_initial = 1.0,
-        )
-        ALTROSolver(prob, opts)
-    elseif method == :sqp
-        DapplegraySQP(prob)
-    else
-        error("Unsupported method: $method. Choose :altro or :sqp.")
-    end
-
-    # Initialization
-    u0 = @SVector fill(0.01, m)
-    U0 = [u0 for _ = 1:N-1]
-    initial_controls!(prob, U0)
-    rollout!(prob)
-
-#    set_options!(solver, show_summary = true)
-    solve!(solver)
-
+#    # Terminal goal constraint
+#    goalcon = GoalConstraint(xf)
+#    add_constraint!(constraints, goalcon, N)
+#
+#    # Control bounds
+#    ubnd = 3.0
+#    bnd = ControlBound(m, u_min = -ubnd, u_max = ubnd)
+##    bnd = BoundConstraint(n, m, u_min = -ubnd, u_max = ubnd)
+#    add_constraint!(constraints, bnd, 1:N-1)
+#
+#    ################## GREAT BARRIER ##################
+#
+#    # Construct problem depending on method
+#    prob = if method == :altro
+#        Problem(model, objective, x0, tf; constraints = constraints)
+#    elseif method == :sqp
+#        collocation_constraints = HermiteSimpsonConstraint(model, dt)
+#        add_constraint!(constraints, collocation_constraints, 1:N-1)
+#        Problem(model, objective, x0, tf; constraints = constraints)
+#    else
+#        error("Unsupported method: $method. Choose :altro or :sqp.")
+#    end
+#
+#    # Construct solver depending on method
+#    solver = if method == :altro
+#        opts = SolverOptions(
+#            cost_tolerance_intermediate = 1e-2,
+#            penalty_scaling = 10.0,
+#            penalty_initial = 1.0,
+#        )
+#        ALTROSolver(prob, opts)
+#    elseif method == :sqp
+#        DapplegraySQP(prob)
+#    else
+#        error("Unsupported method: $method. Choose :altro or :sqp.")
+#    end
+#
+#    # Initialization
+#    u0 = @SVector fill(0.01, m)
+#    U0 = [u0 for _ = 1:N-1]
+#    initial_controls!(prob, U0)
+#    rollout!(prob)
+#
+##    set_options!(solver, show_summary = true)
+#    solve!(solver)
+#
 #    prob
 end
 
