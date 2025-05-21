@@ -61,7 +61,65 @@ function simulate_doublependulum()
     ts, qs, vs = simulate(state, 5., Δt = 1e-3);
 end
 
-struct HermiteSimpsonConstraint{M,T}
+abstract type AbstractKnotPointsFunction end
+statedim(::AbstractKnotPointsFunction) = error("statedim not implemented")
+
+abstract type AdjacentKnotPointsFunction <: AbstractKnotPointsFunction end
+
+abstract type SingleKnotPointFunction <: AbstractKnotPointsFunction end
+function (::SingleKnotPointFunction)(_, _)
+    error("f(x, u) not implemented")
+end
+function (func::SingleKnotPointFunction)(z::AbstractVector)
+    nx = statedim(z)
+    x = view(z, 1:nx)
+    u = view(z, nx+1:length(z))
+    func(x, u)
+end
+function gradient(func::SingleKnotPointFunction, z::AbstractVector)
+    ForwardDiff.gradient(func, z)
+end
+function hessian(func::SingleKnotPointFunction, z::AbstractVector)
+    ForwardDiff.hessian(func, z)
+end
+
+abstract type StateFunction <: SingleKnotPointFunction end
+function _juststatecall(func::StateFunction, x::AbstractVector)
+    func(x, nothing)
+end
+function (func::StateFunction)(z::AbstractVector)
+    nx = statedim(z)
+    x = view(z, 1:nx)
+    _juststatecall(func, x)
+end
+function gradient(func::StateFunction, z::AbstractVector)
+    ForwardDiff.gradient(func, z)
+end
+function hessian(func::StateFunction, z::AbstractVector)
+    ForwardDiff.hessian(func, z)
+end
+
+abstract type ControlFunction <: SingleKnotPointFunction end
+function _justcontrolcall(func::ControlFunction, u::AbstractVector)
+    func(nothing, u)
+end
+function (func::ControlFunction)(z::AbstractVector)
+    nx = statedim(z)
+    u = view(z, nx+1:length(z))
+    _justcontrolcall(func, u)
+end
+function gradient(func::ControlFunction, z::AbstractVector)
+    nx = statedim(z)
+    u = view(z, nx+1:length(z))
+    gradient(func, u)
+end
+function hessian(func::ControlFunction, z::AbstractVector)
+    nx = statedim(z)
+    u = view(z, nx+1:length(z))
+    hessian(func, u)
+end
+
+struct HermiteSimpsonConstraint{M,T} <: AdjacentKnotPointsFunction
     model::M
     Δt::T
 end
@@ -250,8 +308,31 @@ end
 #    end
 #end
 
-lqr_cost(Q,R) = (x,u) -> x'Q*x + u'R*u
-terminal_cost(Q) = (x,_) -> x'Q*x
+struct LQRCost <: SingleKnotPointFunction
+    Q::AbstractMatrix
+    R::AbstractMatrix
+end
+statedim(cost::LQRCost) = size(cost.Q, 1)
+function (cost::LQRCost)(x::AbstractVector, u::AbstractVector)
+    1 / 2 * (x' * cost.Q * x + u' * cost.R * u)
+end
+
+struct StateCost <: StateFunction
+    Q::AbstractMatrix
+end
+statedim(cost::LQRCost) = size(cost.Q, 1)
+function (cost::StateCost)(x::AbstractVector, _)
+    x' * cost.Q * x
+end
+
+struct ControlCost <: ControlFunction
+    R::AbstractMatrix
+end
+statedim(cost::ControlCost) = size(cost.R, 1)
+function (cost::ControlCost)(_, u::AbstractVector)
+    u' * cost.R * u
+end
+
 ## hessian w.r.t to only state even though function sig takes u too
 #dummy_u = nothing              # can also be `SVector{0,Float64}()`
 #f_x = x -> cost(x, dummy_u)    # Rⁿ → ℝ  (u is fixed & unused)
@@ -268,6 +349,9 @@ function evaluatecosts(costs, x, u)
     end
 end
 
+function evaluateconstraints()
+end
+
 function swingup(method::Symbol = :sqp)
     model = doublependulum()
     n = 4 # state dimension
@@ -276,6 +360,11 @@ function swingup(method::Symbol = :sqp)
     N = 2
     tf = 2.0           # final time (sec)
     dt = tf / (N - 1)  # time step (sec)
+
+    # consideration for zero copy
+    #z = Vector{Float64}(undef, nx + nu)
+    #x = view(z, 1:nx)
+    #u = view(z, nx+1:nx+nu)
 
     # Objective
     x0 = @SVector zeros(n)
