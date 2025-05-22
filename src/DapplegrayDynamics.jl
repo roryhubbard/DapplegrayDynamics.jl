@@ -204,13 +204,12 @@ end
 
 abstract type AbstractKnotPointsFunction end
 statedim(::AbstractKnotPointsFunction) = error("statedim not implemented")
+indices(::AbstractKnotPointsFunction) = error("indices not implemented")
 
 abstract type AdjacentKnotPointsFunction <: AbstractKnotPointsFunction end
 
 abstract type SingleKnotPointFunction <: AbstractKnotPointsFunction end
-function (::SingleKnotPointFunction)(_, _)
-    error("f(x, u) not implemented")
-end
+(::SingleKnotPointFunction)(_, _) = error("f(x, u) not implemented")
 function (func::SingleKnotPointFunction)(z::AbstractVector)
     nx = statedim(z)
     x = view(z, 1:nx)
@@ -233,12 +232,6 @@ function (func::StateFunction)(z::AbstractVector)
     x = view(z, 1:nx)
     _juststatecall(func, x)
 end
-function gradient(func::StateFunction, z::AbstractVector)
-    ForwardDiff.gradient(func, z)
-end
-function hessian(func::StateFunction, z::AbstractVector)
-    ForwardDiff.hessian(func, z)
-end
 
 abstract type ControlFunction <: SingleKnotPointFunction end
 function _justcontrolcall(func::ControlFunction, u::AbstractVector)
@@ -248,16 +241,6 @@ function (func::ControlFunction)(z::AbstractVector)
     nx = statedim(z)
     u = view(z, nx+1:length(z))
     _justcontrolcall(func, u)
-end
-function gradient(func::ControlFunction, z::AbstractVector)
-    nx = statedim(z)
-    u = view(z, nx+1:length(z))
-    gradient(func, u)
-end
-function hessian(func::ControlFunction, z::AbstractVector)
-    nx = statedim(z)
-    u = view(z, nx+1:length(z))
-    hessian(func, u)
 end
 
 struct HermiteSimpsonConstraint{M,T} <: AdjacentKnotPointsFunction
@@ -374,8 +357,8 @@ function swingup(method::Symbol = :sqp)
     R = 0.1 * Diagonal(@SVector ones(m)) * dt
 
     objective = [
-        (lqr_cost(Q,R),   1:N-1),
-        (terminal_cost(Qf), N),
+        ( LQRCost(Q,R), 1:N-1),
+        (StateCost(Qf),     N),
     ]
 
     # Create constraints
