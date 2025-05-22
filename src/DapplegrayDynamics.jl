@@ -10,6 +10,147 @@ using StaticArrays
 export swingup, doublependulum
 
 
+struct DapplegraySQP
+#    opts::SolverOptions{T}
+#    stats::SolverStats{T}
+#    problem::Problem
+end
+
+#function build_lagrangian{T}(
+#    𝒇::TrajectoryOptimization.AbstractObjective,
+#    𝒉::Vector{TrajectoryOptimization.AbstractConstraint},
+#    𝒈::Vector{TrajectoryOptimization.AbstractConstraint},
+#    𝒗::Vector{T},
+#    𝝀::Vector{T},
+#)
+#    𝒇 + 𝒗'𝒉 + 𝝀'𝒈
+#end
+
+#function apply_constraint(K, constraintindices, constraint)
+#    println("################### CONSTRAINT ###################")
+#    println(constraint)
+#
+#    T = typeof(constraint)
+#    println("type: ", T)
+#
+#    p = RobotDynamics.output_dim(constraint)
+#    println("output_dim: ", p)
+#
+#    input_dim = RobotDynamics.input_dim(constraint)
+#    println("input_dim: ", input_dim)
+#
+#    input_type = RobotDynamics.functioninputs(constraint)
+#    println("input_type: ", input_type)
+#
+#    sense = TrajectoryOptimization.sense(constraint)
+#    println("sense: ", sense)
+#
+#    for j ∈ constraintindices
+#        println("j: ", j)
+#
+#        k = K[j]
+#        x = RobotDynamics.state(k)
+#        n = RobotDynamics.state_dim(k)
+#        u = RobotDynamics.control(k)
+#        m = RobotDynamics.control_dim(k)
+#        println("state: $n $x")
+#        println("control: $m $u")
+#
+#        y = RobotDynamics.evaluate(constraint, k)
+#        println("evaluate: ", y)
+#
+#        𝑱 = Matrix{Float64}(undef, p, input_dim)
+#        y = Vector{Float64}(undef, p)
+#        RobotDynamics.jacobian!(constraint, 𝑱, y, k)
+#        println("jacobian: ", 𝑱)
+#
+#        𝑯 = Matrix{Float64}(undef, input_dim, input_dim)
+#        𝝀 = zeros(p) # TODO: get this the right way
+#        z_ref = RobotDynamics.getinput(input_type, k)  # this will be x, u, or [x; u]
+#        f(zvec) = RobotDynamics.evaluate(constraint, zvec)
+#        for i = 1:p
+#            fᵢ(zvec) = f(zvec)[i]  # scalar function
+#            Hᵢ = ForwardDiff.hessian(fᵢ, z_ref)
+#            print("row hessian: ", Hᵢ)
+#            𝑯 += 𝝀[i] .* Hᵢ
+#        end
+#        println("sum of hessians: ", 𝑯)
+#    end
+#end
+#
+#
+#function solve!(solver::DapplegraySQP)
+#    for _ = 1:10 # TODO: repeat until convergence criteria is met
+#        𝒇 = get_objective(solver.problem)
+#        constraints = get_constraints(solver.problem)
+#
+#        Z = get_trajectory(solver.problem)
+#        println("trajectory: ", Z)
+#
+#        K = RobotDynamics.getdata(Z)
+#        println("K: ", K)
+#
+#        X = states(Z)
+#        println("X: ", X)
+#
+#        U = controls(Z)
+#        println("U: ", U)
+#
+#        times = gettimes(Z)
+#        println("times: ", times)
+#        println()
+#
+#        for (constraintindices, constraint) ∈ zip(constraints)
+#            apply_constraint(Z, constraintindices, constraint)
+#            println()
+#        end
+#
+#        return
+#
+#        𝒉 = equality_constraints(constraints)
+#        𝒈 = inequality_constraints(constraints)
+#        𝒗 = equality_dual_vector(solver)
+#        𝝀 = inequality_dual_vector(solver)
+#        ℒ = build_lagrangian(𝒇, 𝒉, 𝒈, 𝒗, 𝝀)
+#        ▽ₓ𝒇 = gradient(𝒇)
+#        𝑱ₓ𝒉 = jacobian(𝒉)
+#        𝑱ₓ𝒈 = jacobian(𝒈)
+#        # ▽ₓℒ = gradiant(ℒ)
+#        ▽ₓℒ = ▽ₓ𝒇 + 𝑱ₓ𝒉'𝒗 + 𝑱ₓ𝒈'𝝀
+#        ▽²ₓₓℒ = hessian(▽ₓℒ)
+#
+#        """
+#        Solve QP using Clarabel
+#
+#        minimize   1⁄2𝒙ᵀ𝑷𝒙 + 𝒒ᵀ𝒙
+#        subject to  𝑨𝒙 + 𝒔 = 𝒃
+#                         𝒔 ∈ 𝑲
+#        with decision variables 𝒙 ∈ ℝⁿ, 𝒔 ∈ 𝑲 and data matrices 𝑷 = 𝑷ᵀ ≥ 0,
+#        𝒒 ∈ ℝⁿ, 𝑨 ∈ ℝᵐˣⁿ, and b ∈ ℝᵐ. The convext set 𝑲 is a composition of convex cones.
+#        """
+#        𝑷 = sparse(▽²ₓₓℒ)
+#        𝒒 = sparse(▽ₓℒ)
+#        𝑨 = sparse([𝑱ₓ𝒉;
+#                    𝑱ₓ𝒈;
+#                    ])
+#        𝒃 = [-𝒉;
+#             -𝒈]
+#        𝑲 = [
+#            Clarabel.ZeroConeT(length(𝒉)),
+#            Clarabel.NonnegativeConeT(length(𝒈))]
+#
+#        settings = Clarabel.Settings()
+#        solver   = Clarabel.Solver()
+#        Clarabel.setup!(solver, 𝑷, 𝒒, 𝑨, 𝒃, 𝑲, settings)
+#        result = Clarabel.solve!(solver)
+#        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
+#
+#        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
+#        set_𝒗!(solver, 𝒗ₖ₊₁)
+#        set_𝝀!(solver, 𝝀ₖ₊₁)
+#    end
+#end
+
 function doublependulum()::Mechanism
     g = -9.81 # gravitational acceleration in z-direction
     world = RigidBody{Float64}("world")
@@ -166,148 +307,6 @@ function evaluate!(
     copyto!(c, hermite_simpson_compressed(con.model, con.Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁))
     c
 end
-
-struct DapplegraySQP
-#    opts::SolverOptions{T}
-#    stats::SolverStats{T}
-#    problem::Problem
-end
-
-#function build_lagrangian{T}(
-#    𝒇::TrajectoryOptimization.AbstractObjective,
-#    𝒉::Vector{TrajectoryOptimization.AbstractConstraint},
-#    𝒈::Vector{TrajectoryOptimization.AbstractConstraint},
-#    𝒗::Vector{T},
-#    𝝀::Vector{T},
-#)
-#    𝒇 + 𝒗'𝒉 + 𝝀'𝒈
-#end
-
-#function apply_constraint(K, constraintindices, constraint)
-#    println("################### CONSTRAINT ###################")
-#    println(constraint)
-#
-#    T = typeof(constraint)
-#    println("type: ", T)
-#
-#    p = RobotDynamics.output_dim(constraint)
-#    println("output_dim: ", p)
-#
-#    input_dim = RobotDynamics.input_dim(constraint)
-#    println("input_dim: ", input_dim)
-#
-#    input_type = RobotDynamics.functioninputs(constraint)
-#    println("input_type: ", input_type)
-#
-#    sense = TrajectoryOptimization.sense(constraint)
-#    println("sense: ", sense)
-#
-#    for j ∈ constraintindices
-#        println("j: ", j)
-#
-#        k = K[j]
-#        x = RobotDynamics.state(k)
-#        n = RobotDynamics.state_dim(k)
-#        u = RobotDynamics.control(k)
-#        m = RobotDynamics.control_dim(k)
-#        println("state: $n $x")
-#        println("control: $m $u")
-#
-#        y = RobotDynamics.evaluate(constraint, k)
-#        println("evaluate: ", y)
-#
-#        𝑱 = Matrix{Float64}(undef, p, input_dim)
-#        y = Vector{Float64}(undef, p)
-#        RobotDynamics.jacobian!(constraint, 𝑱, y, k)
-#        println("jacobian: ", 𝑱)
-#
-#        𝑯 = Matrix{Float64}(undef, input_dim, input_dim)
-#        𝝀 = zeros(p) # TODO: get this the right way
-#        z_ref = RobotDynamics.getinput(input_type, k)  # this will be x, u, or [x; u]
-#        f(zvec) = RobotDynamics.evaluate(constraint, zvec)
-#        for i = 1:p
-#            fᵢ(zvec) = f(zvec)[i]  # scalar function
-#            Hᵢ = ForwardDiff.hessian(fᵢ, z_ref)
-#            print("row hessian: ", Hᵢ)
-#            𝑯 += 𝝀[i] .* Hᵢ
-#        end
-#        println("sum of hessians: ", 𝑯)
-#    end
-#end
-#
-#
-#function solve!(solver::DapplegraySQP)
-#    for _ = 1:10 # TODO: repeat until convergence criteria is met
-#        𝒇 = get_objective(solver.problem)
-#        constraints = get_constraints(solver.problem)
-#
-#        Z = get_trajectory(solver.problem)
-#        println("trajectory: ", Z)
-#
-#        K = RobotDynamics.getdata(Z)
-#        println("K: ", K)
-#
-#        X = states(Z)
-#        println("X: ", X)
-#
-#        U = controls(Z)
-#        println("U: ", U)
-#
-#        times = gettimes(Z)
-#        println("times: ", times)
-#        println()
-#
-#        for (constraintindices, constraint) ∈ zip(constraints)
-#            apply_constraint(Z, constraintindices, constraint)
-#            println()
-#        end
-#
-#        return
-#
-#        𝒉 = equality_constraints(constraints)
-#        𝒈 = inequality_constraints(constraints)
-#        𝒗 = equality_dual_vector(solver)
-#        𝝀 = inequality_dual_vector(solver)
-#        ℒ = build_lagrangian(𝒇, 𝒉, 𝒈, 𝒗, 𝝀)
-#        ▽ₓ𝒇 = gradient(𝒇)
-#        𝑱ₓ𝒉 = jacobian(𝒉)
-#        𝑱ₓ𝒈 = jacobian(𝒈)
-#        # ▽ₓℒ = gradiant(ℒ)
-#        ▽ₓℒ = ▽ₓ𝒇 + 𝑱ₓ𝒉'𝒗 + 𝑱ₓ𝒈'𝝀
-#        ▽²ₓₓℒ = hessian(▽ₓℒ)
-#
-#        """
-#        Solve QP using Clarabel
-#
-#        minimize   1⁄2𝒙ᵀ𝑷𝒙 + 𝒒ᵀ𝒙
-#        subject to  𝑨𝒙 + 𝒔 = 𝒃
-#                         𝒔 ∈ 𝑲
-#        with decision variables 𝒙 ∈ ℝⁿ, 𝒔 ∈ 𝑲 and data matrices 𝑷 = 𝑷ᵀ ≥ 0,
-#        𝒒 ∈ ℝⁿ, 𝑨 ∈ ℝᵐˣⁿ, and b ∈ ℝᵐ. The convext set 𝑲 is a composition of convex cones.
-#        """
-#        𝑷 = sparse(▽²ₓₓℒ)
-#        𝒒 = sparse(▽ₓℒ)
-#        𝑨 = sparse([𝑱ₓ𝒉;
-#                    𝑱ₓ𝒈;
-#                    ])
-#        𝒃 = [-𝒉;
-#             -𝒈]
-#        𝑲 = [
-#            Clarabel.ZeroConeT(length(𝒉)),
-#            Clarabel.NonnegativeConeT(length(𝒈))]
-#
-#        settings = Clarabel.Settings()
-#        solver   = Clarabel.Solver()
-#        Clarabel.setup!(solver, 𝑷, 𝒒, 𝑨, 𝒃, 𝑲, settings)
-#        result = Clarabel.solve!(solver)
-#        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
-#
-#        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
-#        set_𝒗!(solver, 𝒗ₖ₊₁)
-#        set_𝝀!(solver, 𝝀ₖ₊₁)
-#    end
-#end
-
 struct LQRCost <: SingleKnotPointFunction
     Q::AbstractMatrix
     R::AbstractMatrix
