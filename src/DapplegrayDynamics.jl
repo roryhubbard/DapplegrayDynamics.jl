@@ -205,6 +205,13 @@ end
 abstract type AbstractKnotPointsFunction end
 statedim(::AbstractKnotPointsFunction) = error("statedim not implemented")
 indices(::AbstractKnotPointsFunction) = error("indices not implemented")
+function evaluate(funcs::AbstractVector{<:AbstractKnotPointsFunction}, knotpoints)
+    for func ∈ funcs
+        for idx ∈ indices(func)
+            func(knotpoints[idx])
+        end
+    end
+end
 
 abstract type AdjacentKnotPointsFunction <: AbstractKnotPointsFunction end
 
@@ -332,18 +339,6 @@ end
 ## Hessian w.r.t. x ONLY:   n × n
 #H = ForwardDiff.hessian(f_x, x_k)
 
-function evaluatecosts(costs, x, u)
-    for cost ∈ costs
-        # TODO: this indexing is going to cause issues with how the cost
-        # functions are currently defined
-        idx = indices(cost)
-        cost(x[idx], u[idx])
-    end
-end
-
-function evaluateconstraints()
-end
-
 function swingup(method::Symbol = :sqp)
     model = doublependulum()
     n = 4 # state dimension
@@ -358,7 +353,7 @@ function swingup(method::Symbol = :sqp)
     #x = view(z, 1:nx)
     #u = view(z, nx+1:nx+nu)
 
-    # Objective
+    # TODO: Incorporate these into objective and constraints somehow
     x0 = @SVector zeros(n)
     xf = @SVector [π, 0, 0, 0]  # swing up
 
@@ -367,13 +362,15 @@ function swingup(method::Symbol = :sqp)
     R = 0.1 * Diagonal(@SVector ones(m)) * dt
 
     objective = [
-        ( LQRCost(Q,R), 1:N-1),
-        (StateCost(Qf),     N),
+        LQRCost(Q, R, 1:N-1),
+        StateCost(Qf, N),
     ]
 
-    # Create constraints
     constraints = [
     ]
+
+    evaluate(objective)
+    evaluate(constraints)
 
 #    # Terminal goal constraint
 #    goalcon = GoalConstraint(xf)
