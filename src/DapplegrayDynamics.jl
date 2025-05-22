@@ -246,7 +246,9 @@ end
 struct HermiteSimpsonConstraint{M,T} <: AdjacentKnotPointsFunction
     model::M
     Δt::T
+    idx::AbstractVector{Int}
 end
+indices(constraint::HermiteSimpsonConstraint) = length(constraint.idx)
 
 function hermite_simpson_compressed(mechanism::Mechanism, Δt::Real, xₖ::AbstractVector, uₖ::AbstractVector, xₖ₊₁::AbstractVector, uₖ₊₁::AbstractVector)
     result = ConstraintDynamicsResult(mechanism)
@@ -290,27 +292,34 @@ function evaluate!(
     copyto!(c, hermite_simpson_compressed(con.model, con.Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁))
     c
 end
+
 struct LQRCost <: SingleKnotPointFunction
     Q::AbstractMatrix
     R::AbstractMatrix
+    idx::AbstractVector{Int}
 end
 statedim(cost::LQRCost) = size(cost.Q, 1)
+indices(cost::LQRCost) = length(cost.idx)
 function (cost::LQRCost)(x::AbstractVector, u::AbstractVector)
     1 / 2 * (x' * cost.Q * x + u' * cost.R * u)
 end
 
 struct StateCost <: StateFunction
     Q::AbstractMatrix
+    idx::AbstractVector{Int}
 end
 statedim(cost::LQRCost) = size(cost.Q, 1)
+indices(cost::StateCost) = length(cost.idx)
 function (cost::StateCost)(x::AbstractVector, _)
     x' * cost.Q * x
 end
 
 struct ControlCost <: ControlFunction
     R::AbstractMatrix
+    idx::AbstractVector{Int}
 end
 statedim(cost::ControlCost) = size(cost.R, 1)
+indices(cost::ControlCost) = length(cost.idx)
 function (cost::ControlCost)(_, u::AbstractVector)
     u' * cost.R * u
 end
@@ -324,10 +333,11 @@ end
 #H = ForwardDiff.hessian(f_x, x_k)
 
 function evaluatecosts(costs, x, u)
-    for (f, idx) in costs
+    for cost ∈ costs
         # TODO: this indexing is going to cause issues with how the cost
         # functions are currently defined
-        f(x[idx], u[idx])
+        idx = indices(cost)
+        cost(x[idx], u[idx])
     end
 end
 
