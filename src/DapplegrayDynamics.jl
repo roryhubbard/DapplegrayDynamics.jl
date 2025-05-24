@@ -205,6 +205,12 @@ end
 abstract type AbstractKnotPointsFunction end
 statedim(::AbstractKnotPointsFunction) = error("statedim not implemented")
 indices(::AbstractKnotPointsFunction) = error("indices not implemented")
+function splitknot(func::AbstractKnotPointsFunction, z::AbstractVector)
+    nx = statedim(func)
+    x= view(z, 1:nx)
+    u = view(z, nx+1:length(z))
+    x, u
+end
 function evaluate(funcs::AbstractVector{<:AbstractKnotPointsFunction}, knotpoints)
     for func ∈ funcs
         for idx ∈ indices(func)
@@ -218,9 +224,7 @@ abstract type AdjacentKnotPointsFunction <: AbstractKnotPointsFunction end
 abstract type SingleKnotPointFunction <: AbstractKnotPointsFunction end
 (::SingleKnotPointFunction)(_, _) = error("f(x, u) not implemented")
 function (func::SingleKnotPointFunction)(z::AbstractVector)
-    nx = statedim(z)
-    x = view(z, 1:nx)
-    u = view(z, nx+1:length(z))
+    x, u = splitknot(func, z)
     func(x, u)
 end
 function gradient(func::SingleKnotPointFunction, z::AbstractVector)
@@ -235,8 +239,7 @@ function _juststatecall(func::StateFunction, x::AbstractVector)
     func(x, nothing)
 end
 function (func::StateFunction)(z::AbstractVector)
-    nx = statedim(z)
-    x = view(z, 1:nx)
+    x, _ = splitknot(func, z)
     _juststatecall(func, x)
 end
 
@@ -245,17 +248,9 @@ function _justcontrolcall(func::ControlFunction, u::AbstractVector)
     func(nothing, u)
 end
 function (func::ControlFunction)(z::AbstractVector)
-    nx = statedim(z)
-    u = view(z, nx+1:length(z))
+    _, u = splitknot(func, z)
     _justcontrolcall(func, u)
 end
-
-struct HermiteSimpsonConstraint{M,T} <: AdjacentKnotPointsFunction
-    model::M
-    Δt::T
-    idx::AbstractVector{Int}
-end
-indices(constraint::HermiteSimpsonConstraint) = length(constraint.idx)
 
 function hermite_simpson_compressed(mechanism::Mechanism, Δt::Real, xₖ::AbstractVector, uₖ::AbstractVector, xₖ₊₁::AbstractVector, uₖ₊₁::AbstractVector)
     result = ConstraintDynamicsResult(mechanism)
@@ -277,33 +272,22 @@ function hermite_simpson_compressed(mechanism::Mechanism, Δt::Real, xₖ::Abstr
     # equality constraint: xₖ₊₁ - xₖ = (Δt / 6) * (fₖ + 4fcol + fₖ₊₁)
     xₖ₊₁ - xₖ - (Δt / 6) * (ẋₖ + 4fcol + ẋₖ₊₁)
 end
-
-function evaluate(
-    con::HermiteSimpsonConstraint,
-    xₖ::AbstractVector,
-    uₖ::AbstractVector,
-    xₖ₊₁::AbstractVector,
-    uₖ₊₁::AbstractVector,
-)
-    hermite_simpson_compressed(con.model, con.Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
+struct HermiteSimpsonConstraint{M,T} <: AdjacentKnotPointsFunction
+    model::M
+    Δt::T
+    idx::UnitRange{Int}
 end
-
-function evaluate!(
-    con::HermiteSimpsonConstraint,
-    c::AbstractVector,
-    xₖ::AbstractVector,
-    uₖ::AbstractVector,
-    xₖ₊₁::AbstractVector,
-    uₖ₊₁::AbstractVector,
-)
-    copyto!(c, hermite_simpson_compressed(con.model, con.Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁))
-    c
+indices(constraint::HermiteSimpsonConstraint) = length(constraint.idx)
+function (con::HermiteSimpsonConstraint)(zₖ::AbstractVector, zₖ₊₁::AbstractVector)
+    xₖ, uₖ = splitknot(con, zₖ)
+    xₖ₊₁, uₖ₊₁ = splitknot(con, zₖ₊₁)
+    hermite_simpson_compressed(con.model, con.Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
 end
 
 struct LQRCost <: SingleKnotPointFunction
     Q::AbstractMatrix
     R::AbstractMatrix
-    idx::AbstractVector{Int}
+    idx::UnitRange{Int}
 end
 statedim(cost::LQRCost) = size(cost.Q, 1)
 indices(cost::LQRCost) = length(cost.idx)
@@ -313,7 +297,7 @@ end
 
 struct StateCost <: StateFunction
     Q::AbstractMatrix
-    idx::AbstractVector{Int}
+    idx::UnitRange{Int}
 end
 statedim(cost::LQRCost) = size(cost.Q, 1)
 indices(cost::StateCost) = length(cost.idx)
@@ -323,7 +307,7 @@ end
 
 struct ControlCost <: ControlFunction
     R::AbstractMatrix
-    idx::AbstractVector{Int}
+    idx::UnitRange{Int}
 end
 statedim(cost::ControlCost) = size(cost.R, 1)
 indices(cost::ControlCost) = length(cost.idx)
@@ -346,7 +330,7 @@ function swingup(method::Symbol = :sqp)
 
     N = 2
     tf = 2.0           # final time (sec)
-    dt = tf / (N - 1)  # time step (sec)
+    Δt = tf / (N - 1)  # time step (sec)
 
     # consideration for zero copy
     #z = Vector{Float64}(undef, nx + nu)
@@ -357,9 +341,9 @@ function swingup(method::Symbol = :sqp)
     x0 = @SVector zeros(n)
     xf = @SVector [π, 0, 0, 0]  # swing up
 
-    Q = 0.01 * Diagonal(@SVector ones(n)) * dt
+    Q = 0.01 * Diagonal(@SVector ones(n)) * Δt
     Qf = 100.0 * Diagonal(@SVector ones(n))
-    R = 0.1 * Diagonal(@SVector ones(m)) * dt
+    R = 0.1 * Diagonal(@SVector ones(m)) * Δt
 
     objective = [
         LQRCost(Q, R, 1:N-1),
@@ -367,6 +351,7 @@ function swingup(method::Symbol = :sqp)
     ]
 
     constraints = [
+        HermiteSimpsonConstraint(model, Δt, 1:N),
     ]
 
     evaluate(objective)
