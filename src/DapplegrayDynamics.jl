@@ -252,25 +252,46 @@ function (func::ControlFunction)(z::AbstractVector)
     _justcontrolcall(func, u)
 end
 
-function hermite_simpson_compressed(mechanism::Mechanism, Δt::Real, xₖ::AbstractVector, uₖ::AbstractVector, xₖ₊₁::AbstractVector, uₖ₊₁::AbstractVector)
-    result = ConstraintDynamicsResult(mechanism)
+
+function hermite_simpson_separated(mechanism::Mechanism, Δt::Real, xₖ::AbstractVector, uₖ::AbstractVector, xₖ₊₁::AbstractVector, uₖ₊₁::AbstractVector, xₘ::AbstractVector, uₘ::AbstractVector)
+    mechanismstate = MechanismState(mechanism)
+    dynamicsresult = DynamicsResult(mechanism)
 
     ẋₖ = similar(xₖ)
-    dynamics!(ẋₖ, result, xₖ, uₖ)
+    dynamics!(ẋₖ, dynamicsresult, mechanismstate, xₖ, uₖ)
 
     ẋₖ₊₁ = similar(xₖ₊₁)
-    dynamics!(ẋₖ₊₁, result, xₖ₊₁, uₖ₊₁)
+    dynamics!(ẋₖ₊₁, dynamicsresult, mechanismstate, xₖ₊₁, uₖ₊₁)
+
+    ẋₘ = similar(xₖ)
+    dynamics!(ẋₘ, dynamicsresult, mechanismstate, xₘ, uₘ)
+
+    c₁ = xₖ₊₁ - xₖ - Δt / 6 * (ẋₖ + 4 * ẋₘ + ẋₖ₊₁)
+    c₂ = ẋₘ - 1 / 2 * (xₖ + xₖ₊₁) - Δt / 8 * (ẋₖ - ẋₖ₊₁)
+    c₁, c₂
+end
+
+function hermite_simpson_compressed(mechanism::Mechanism, Δt::Real, xₖ::AbstractVector, uₖ::AbstractVector, xₖ₊₁::AbstractVector, uₖ₊₁::AbstractVector)
+    mechanismstate = MechanismState(mechanism)
+    dynamicsresult = DynamicsResult(mechanism)
+
+    ẋₖ = similar(xₖ)
+    dynamics!(ẋₖ, dynamicsresult, mechanismstate, xₖ, uₖ)
+
+    ẋₖ₊₁ = similar(xₖ₊₁)
+    dynamics!(ẋₖ₊₁, dynamicsresult, mechanismstate, xₖ₊₁, uₖ₊₁)
 
     # We could add the collocation point as an extra decision varaible and
     # constraint. This would be "separated form". Here we are implementing
     # "compressed form" where we calculate `fcol` and jam it into the constraint
     # for the integral of the system dynamics.
-    xcol = 0.5 * (xₖ + xₖ₊₁) + Δt / 8 * (ẋₖ - ẋₖ₊₁)
-    ucol = 0.5 * (uₖ + uₖ₊₁)
-    fcol = dynamics!(mechanism, xcol, ucol)
+    xₘ = 1 / 2 * (xₖ + xₖ₊₁) + Δt / 8 * (ẋₖ - ẋₖ₊₁)
+    uₘ = 1 / 2 * (uₖ + uₖ₊₁)
+    ẋₘ = similar(xₖ)
+    dynamics!(ẋₘ, dynamicsresult, mechanismstate, xₘ, uₘ)
 
     # equality constraint: xₖ₊₁ - xₖ = (Δt / 6) * (fₖ + 4fcol + fₖ₊₁)
-    xₖ₊₁ - xₖ - (Δt / 6) * (ẋₖ + 4fcol + ẋₖ₊₁)
+    xₖ₊₁ - xₖ - Δt / 6 * (ẋₖ + 4 * ẋₘ + ẋₖ₊₁)
 end
 struct HermiteSimpsonConstraint{M,T} <: AdjacentKnotPointsFunction
     model::M
