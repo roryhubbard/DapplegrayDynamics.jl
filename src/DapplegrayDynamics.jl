@@ -214,6 +214,24 @@ function evaluate(funcs::AbstractVector{<:AbstractKnotPointsFunction}, knotpoint
 end
 
 abstract type AdjacentKnotPointsFunction <: AbstractKnotPointsFunction end
+function gradient(func::AdjacentKnotPointsFunction, zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
+    z = [zₖ; zₖ₊₁]
+    nₖ = length(zₖ)
+    func_stacked_knots(z) = func(z[1:nₖ], z[nₖ+1:end])
+    ForwardDiff.gradient(func_stacked_knots, z)
+end
+function jacobian(func::AdjacentKnotPointsFunction, zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
+    z = [zₖ; zₖ₊₁]
+    nₖ = length(zₖ)
+    func_stacked_knots(z) = func(z[1:nₖ], z[nₖ+1:end])
+    ForwardDiff.jacobian(func_stacked_knots, z)
+end
+function hessian(func::AdjacentKnotPointsFunction, zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
+    z = [zₖ; zₖ₊₁]
+    nₖ = length(zₖ)
+    func_stacked_knots(z) = func(z[1:nₖ], z[nₖ+1:end])
+    ForwardDiff.hessian(func_stacked_knots, z)
+end
 
 abstract type SingleKnotPointFunction <: AbstractKnotPointsFunction end
 (::SingleKnotPointFunction)(_, _) = error("f(x, u) not implemented")
@@ -224,6 +242,9 @@ function (func::SingleKnotPointFunction)(z::AbstractKnotPoint)
 end
 function gradient(func::SingleKnotPointFunction, z::AbstractKnotPoint)
     ForwardDiff.gradient(func, z)
+end
+function jacobian(func::SingleKnotPointFunction, z::AbstractKnotPoint)
+    ForwardDiff.jacobian(func, z)
 end
 function hessian(func::SingleKnotPointFunction, z::AbstractKnotPoint)
     ForwardDiff.hessian(func, z)
