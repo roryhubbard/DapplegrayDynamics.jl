@@ -9,6 +9,7 @@ using StaticArrays
 
 export swingup, doublependulum
 
+include("knotpoint.jl")
 
 struct DapplegraySQP
 #    opts::SolverOptions{T}
@@ -203,14 +204,7 @@ function simulate_doublependulum()
 end
 
 abstract type AbstractKnotPointsFunction end
-statedim(::AbstractKnotPointsFunction) = error("statedim not implemented")
 indices(::AbstractKnotPointsFunction) = error("indices not implemented")
-function splitknot(func::AbstractKnotPointsFunction, z::AbstractVector)
-    nx = statedim(func)
-    x= view(z, 1:nx)
-    u = view(z, nx+1:length(z))
-    x, u
-end
 function evaluate(funcs::AbstractVector{<:AbstractKnotPointsFunction}, knotpoints)
     for func ∈ funcs
         for idx ∈ indices(func)
@@ -223,14 +217,15 @@ abstract type AdjacentKnotPointsFunction <: AbstractKnotPointsFunction end
 
 abstract type SingleKnotPointFunction <: AbstractKnotPointsFunction end
 (::SingleKnotPointFunction)(_, _) = error("f(x, u) not implemented")
-function (func::SingleKnotPointFunction)(z::AbstractVector)
-    x, u = splitknot(func, z)
+function (func::SingleKnotPointFunction)(z::AbstractKnotPoint)
+    x = state(z)
+    u = control(u)
     func(x, u)
 end
-function gradient(func::SingleKnotPointFunction, z::AbstractVector)
+function gradient(func::SingleKnotPointFunction, z::AbstractKnotPoint)
     ForwardDiff.gradient(func, z)
 end
-function hessian(func::SingleKnotPointFunction, z::AbstractVector)
+function hessian(func::SingleKnotPointFunction, z::AbstractKnotPoint)
     ForwardDiff.hessian(func, z)
 end
 
@@ -238,8 +233,8 @@ abstract type StateFunction <: SingleKnotPointFunction end
 function _juststatecall(func::StateFunction, x::AbstractVector)
     func(x, nothing)
 end
-function (func::StateFunction)(z::AbstractVector)
-    x, _ = splitknot(func, z)
+function (func::StateFunction)(z::AbstractKnotPoint)
+    x = state(z)
     _juststatecall(func, x)
 end
 
@@ -247,11 +242,10 @@ abstract type ControlFunction <: SingleKnotPointFunction end
 function _justcontrolcall(func::ControlFunction, u::AbstractVector)
     func(nothing, u)
 end
-function (func::ControlFunction)(z::AbstractVector)
-    _, u = splitknot(func, z)
+function (func::ControlFunction)(z::AbstractKnotPoint)
+    u = control(u)
     _justcontrolcall(func, u)
 end
-
 
 function hermite_simpson_separated(mechanism::Mechanism, Δt::Real, xₖ::AbstractVector, uₖ::AbstractVector, xₖ₊₁::AbstractVector, uₖ₊₁::AbstractVector, xₘ::AbstractVector, uₘ::AbstractVector)
     mechanismstate = MechanismState(mechanism)
@@ -294,15 +288,16 @@ function hermite_simpson_compressed(mechanism::Mechanism, Δt::Real, xₖ::Abstr
 end
 struct HermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
     mechanism::Mechanism
-    Δt::T
     idx::UnitRange{Int}
 end
-statedim(cons::HermiteSimpsonConstraint) = num_positions(mechanism) + num_velocities(mechanism)
 indices(con::HermiteSimpsonConstraint) = length(constraint.idx)
-function (con::HermiteSimpsonConstraint)(zₖ::AbstractVector, zₖ₊₁::AbstractVector)
-    xₖ, uₖ = splitknot(con, zₖ)
-    xₖ₊₁, uₖ₊₁ = splitknot(con, zₖ₊₁)
-    hermite_simpson_compressed(con.mechanism, con.Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
+function (con::HermiteSimpsonConstraint)(zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
+    xₖ = state(zₖ)
+    uₖ = control(zₖ)
+    xₖ₊₁ = state(zₖ₊₁)
+    uₖ₊₁ = control(zₖ₊₁)
+    Δt = timestep(zₖ)
+    hermite_simpson_compressed(con.mechanism, Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
 end
 
 struct ControlBound{T} <: ControlFunction
@@ -328,7 +323,7 @@ function (con::ControlBound)(_, u::AbstractVector)
     elseif lb === nothing
         return u .- ub
     else
-        return vcat(lb .- u, u .- ub)
+        return [lb .- u; u .- ub]
     end
 end
 
@@ -337,7 +332,6 @@ struct LQRCost <: SingleKnotPointFunction
     R::AbstractMatrix
     idx::UnitRange{Int}
 end
-statedim(cost::LQRCost) = size(cost.Q, 1)
 indices(cost::LQRCost) = length(cost.idx)
 function (cost::LQRCost)(x::AbstractVector, u::AbstractVector)
     1 / 2 * (x' * cost.Q * x + u' * cost.R * u)
@@ -347,7 +341,6 @@ struct StateCost <: StateFunction
     Q::AbstractMatrix
     idx::UnitRange{Int}
 end
-statedim(cost::LQRCost) = size(cost.Q, 1)
 indices(cost::StateCost) = length(cost.idx)
 function (cost::StateCost)(x::AbstractVector, _)
     x' * cost.Q * x
