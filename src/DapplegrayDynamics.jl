@@ -205,15 +205,14 @@ end
 
 abstract type AbstractKnotPointsFunction end
 indices(::AbstractKnotPointsFunction) = error("indices not implemented")
-function evaluate(funcs::AbstractVector{<:AbstractKnotPointsFunction}, knotpoints)
-    for func ∈ funcs
-        for idx ∈ indices(func)
-            func(knotpoints[idx])
-        end
-    end
-end
+(::AbstractKnotPointsFunction})(knotpoints) = error("call on knotpoint trajectory not implemented")
 
 abstract type AdjacentKnotPointsFunction <: AbstractKnotPointsFunction end
+function (func::AdjacentKnotPointsFunction)(knotpoints)
+    for idx ∈ indices(func)
+        func(knotpoints[idx], knotpoints[idx+1])
+    end
+end
 function gradient(func::AdjacentKnotPointsFunction, zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
     z = [zₖ; zₖ₊₁]
     nₖ = length(zₖ)
@@ -235,6 +234,11 @@ end
 
 abstract type SingleKnotPointFunction <: AbstractKnotPointsFunction end
 (::SingleKnotPointFunction)(_, _) = error("f(x, u) not implemented")
+function (func::SingleKnotPointFunction)(knotpoints)
+    for idx ∈ indices(func)
+        func(knotpoints[idx])
+    end
+end
 function (func::SingleKnotPointFunction)(z::AbstractKnotPoint)
     x = state(z)
     u = control(u)
