@@ -270,7 +270,6 @@ function hermite_simpson_separated(mechanism::Mechanism, Δt::Real, xₖ::Abstra
     c₂ = ẋₘ - 1 / 2 * (xₖ + xₖ₊₁) - Δt / 8 * (ẋₖ - ẋₖ₊₁)
     c₁, c₂
 end
-
 function hermite_simpson_compressed(mechanism::Mechanism, Δt::Real, xₖ::AbstractVector, uₖ::AbstractVector, xₖ₊₁::AbstractVector, uₖ₊₁::AbstractVector)
     mechanismstate = MechanismState(mechanism)
     dynamicsresult = DynamicsResult(mechanism)
@@ -293,16 +292,44 @@ function hermite_simpson_compressed(mechanism::Mechanism, Δt::Real, xₖ::Abstr
     # equality constraint: xₖ₊₁ - xₖ = (Δt / 6) * (fₖ + 4fcol + fₖ₊₁)
     xₖ₊₁ - xₖ - Δt / 6 * (ẋₖ + 4 * ẋₘ + ẋₖ₊₁)
 end
-struct HermiteSimpsonConstraint{M,T} <: AdjacentKnotPointsFunction
-    model::M
+struct HermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
+    mechanism::Mechanism
     Δt::T
     idx::UnitRange{Int}
 end
-indices(constraint::HermiteSimpsonConstraint) = length(constraint.idx)
+statedim(cons::HermiteSimpsonConstraint) = num_positions(mechanism) + num_velocities(mechanism)
+indices(con::HermiteSimpsonConstraint) = length(constraint.idx)
 function (con::HermiteSimpsonConstraint)(zₖ::AbstractVector, zₖ₊₁::AbstractVector)
     xₖ, uₖ = splitknot(con, zₖ)
     xₖ₊₁, uₖ₊₁ = splitknot(con, zₖ₊₁)
-    hermite_simpson_compressed(con.model, con.Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
+    hermite_simpson_compressed(con.mechanism, con.Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
+end
+
+struct ControlBound{T} <: ControlFunction
+    upperbound::Union{AbstractVector{T}, Nothing}
+    lowerbound::Union{AbstractVector{T}, Nothing}
+    idx::UnitRange{Int}
+
+    function ControlBound(upperbound::Union{AbstractVector{T}, Nothing},
+                          lowerbound::Union{AbstractVector{T}, Nothing},
+                          idx::UnitRange{Int}) where {T}
+        if upperbound === nothing && lowerbound === nothing
+            throw(ArgumentError("At least one of upperbound or lowerbound must be provided."))
+        end
+        new{T}(ub, lb, idx)
+    end
+end
+indices(con::ControlBound) = upperbound == nothing ? length(lowerbound) : length(upperbound)
+function (con::ControlBound)(_, u::AbstractVector)
+    ub = con.upperbound
+    lb = con.lowerbound
+    if ub === nothing
+        return lb .- u
+    elseif lb === nothing
+        return u .- ub
+    else
+        return vcat(lb .- u, u .- ub)
+    end
 end
 
 struct LQRCost <: SingleKnotPointFunction
@@ -330,7 +357,6 @@ struct ControlCost <: ControlFunction
     R::AbstractMatrix
     idx::UnitRange{Int}
 end
-statedim(cost::ControlCost) = size(cost.R, 1)
 indices(cost::ControlCost) = length(cost.idx)
 function (cost::ControlCost)(_, u::AbstractVector)
     u' * cost.R * u
@@ -345,7 +371,7 @@ end
 #H = ForwardDiff.hessian(f_x, x_k)
 
 function swingup(method::Symbol = :sqp)
-    model = doublependulum()
+    mechanism = doublependulum()
     n = 4 # state dimension
     m = 1 # control dimension
 
@@ -372,7 +398,7 @@ function swingup(method::Symbol = :sqp)
     ]
 
     constraints = [
-        HermiteSimpsonConstraint(model, Δt, 1:N),
+        HermiteSimpsonConstraint(mechanism, Δt, 1:N),
     ]
 
     evaluate(objective)
