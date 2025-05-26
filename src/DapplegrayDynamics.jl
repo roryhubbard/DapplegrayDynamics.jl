@@ -205,7 +205,7 @@ end
 
 abstract type AbstractKnotPointsFunction end
 indices(::AbstractKnotPointsFunction) = error("indices not implemented")
-(::AbstractKnotPointsFunction})(knotpoints) = error("call on knotpoint trajectory not implemented")
+(::AbstractKnotPointsFunction)(knotpoints) = error("call on knotpoint trajectory not implemented")
 
 abstract type AdjacentKnotPointsFunction <: AbstractKnotPointsFunction end
 function (func::AdjacentKnotPointsFunction)(knotpoints)
@@ -333,19 +333,19 @@ struct ControlBound{T} <: ControlFunction
     function ControlBound(upperbound::Union{AbstractVector{T}, Nothing},
                           lowerbound::Union{AbstractVector{T}, Nothing},
                           idx::UnitRange{Int}) where {T}
-        if upperbound === nothing && lowerbound === nothing
+        if isnothing(upperbound) && isnothing(lowerbound)
             throw(ArgumentError("At least one of upperbound or lowerbound must be provided."))
         end
         new{T}(ub, lb, idx)
     end
 end
-indices(con::ControlBound) = upperbound == nothing ? length(lowerbound) : length(upperbound)
+indices(con::ControlBound) = isnothing(upperbound) ? length(lowerbound) : length(upperbound)
 function (con::ControlBound)(_, u::AbstractVector)
     ub = con.upperbound
     lb = con.lowerbound
-    if ub === nothing
+    if isnothing(ub)
         return lb .- u
-    elseif lb === nothing
+    elseif isnothing(lb)
         return u .- ub
     else
         return [lb .- u; u .- ub]
@@ -418,9 +418,6 @@ function swingup(method::Symbol = :sqp)
     constraints = [
         HermiteSimpsonConstraint(mechanism, Δt, 1:N),
     ]
-
-    evaluate(objective)
-    evaluate(constraints)
 
 #    # Terminal goal constraint
 #    goalcon = GoalConstraint(xf)
