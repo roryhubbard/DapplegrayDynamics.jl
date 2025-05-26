@@ -11,12 +11,6 @@ export swingup, doublependulum
 
 include("knotpoint.jl")
 
-struct DapplegraySQP
-#    opts::SolverOptions{T}
-#    stats::SolverStats{T}
-#    problem::Problem
-end
-
 #function build_lagrangian{T}(
 #    𝒇::TrajectoryOptimization.AbstractObjective,
 #    𝒉::Vector{TrajectoryOptimization.AbstractConstraint},
@@ -79,78 +73,6 @@ end
 #    end
 #end
 #
-#
-#function solve!(solver::DapplegraySQP)
-#    for _ = 1:10 # TODO: repeat until convergence criteria is met
-#        𝒇 = get_objective(solver.problem)
-#        constraints = get_constraints(solver.problem)
-#
-#        Z = get_trajectory(solver.problem)
-#        println("trajectory: ", Z)
-#
-#        K = RobotDynamics.getdata(Z)
-#        println("K: ", K)
-#
-#        X = states(Z)
-#        println("X: ", X)
-#
-#        U = controls(Z)
-#        println("U: ", U)
-#
-#        times = gettimes(Z)
-#        println("times: ", times)
-#        println()
-#
-#        for (constraintindices, constraint) ∈ zip(constraints)
-#            apply_constraint(Z, constraintindices, constraint)
-#            println()
-#        end
-#
-#        return
-#
-#        𝒉 = equality_constraints(constraints)
-#        𝒈 = inequality_constraints(constraints)
-#        𝒗 = equality_dual_vector(solver)
-#        𝝀 = inequality_dual_vector(solver)
-#        ℒ = build_lagrangian(𝒇, 𝒉, 𝒈, 𝒗, 𝝀)
-#        ▽ₓ𝒇 = gradient(𝒇)
-#        𝑱ₓ𝒉 = jacobian(𝒉)
-#        𝑱ₓ𝒈 = jacobian(𝒈)
-#        # ▽ₓℒ = gradiant(ℒ)
-#        ▽ₓℒ = ▽ₓ𝒇 + 𝑱ₓ𝒉'𝒗 + 𝑱ₓ𝒈'𝝀
-#        ▽²ₓₓℒ = hessian(▽ₓℒ)
-#
-#        """
-#        Solve QP using Clarabel
-#
-#        minimize   1⁄2𝒙ᵀ𝑷𝒙 + 𝒒ᵀ𝒙
-#        subject to  𝑨𝒙 + 𝒔 = 𝒃
-#                         𝒔 ∈ 𝑲
-#        with decision variables 𝒙 ∈ ℝⁿ, 𝒔 ∈ 𝑲 and data matrices 𝑷 = 𝑷ᵀ ≥ 0,
-#        𝒒 ∈ ℝⁿ, 𝑨 ∈ ℝᵐˣⁿ, and b ∈ ℝᵐ. The convext set 𝑲 is a composition of convex cones.
-#        """
-#        𝑷 = sparse(▽²ₓₓℒ)
-#        𝒒 = sparse(▽ₓℒ)
-#        𝑨 = sparse([𝑱ₓ𝒉;
-#                    𝑱ₓ𝒈;
-#                    ])
-#        𝒃 = [-𝒉;
-#             -𝒈]
-#        𝑲 = [
-#            Clarabel.ZeroConeT(length(𝒉)),
-#            Clarabel.NonnegativeConeT(length(𝒈))]
-#
-#        settings = Clarabel.Settings()
-#        solver   = Clarabel.Solver()
-#        Clarabel.setup!(solver, 𝑷, 𝒒, 𝑨, 𝒃, 𝑲, settings)
-#        result = Clarabel.solve!(solver)
-#        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
-#
-#        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
-#        set_𝒗!(solver, 𝒗ₖ₊₁)
-#        set_𝝀!(solver, 𝝀ₖ₊₁)
-#    end
-#end
 
 function doublependulum()::Mechanism
     g = -9.81 # gravitational acceleration in z-direction
@@ -416,6 +338,88 @@ function initialize_decision_variables(mechanism::Mechanism, tf::Real, Δt::Real
     knotpoints
 end
 
+struct Problem
+    mechanism::Mechanism
+    objective::AbstractVector{<:AbstractKnotPointsFunction}
+    constraints::AbstractVector{<:AbstractKnotPointsFunction}
+    knotpoints::AbstractVector{<:AbstractKnotPoint}
+end
+
+struct SQP
+end
+
+#function solve!(solver::SQP, problem::Problem)
+#    for _ = 1:1 # TODO: repeat until convergence criteria is met
+#        𝒇 = get_objective(problem)
+#        constraints = get_constraints(problem)
+#
+#        Z = get_trajectory(solver.problem)
+#        println("trajectory: ", Z)
+#
+#        K = RobotDynamics.getdata(Z)
+#        println("K: ", K)
+#
+#        X = states(Z)
+#        println("X: ", X)
+#
+#        U = controls(Z)
+#        println("U: ", U)
+#
+#        times = gettimes(Z)
+#        println("times: ", times)
+#        println()
+#
+#        for (constraintindices, constraint) ∈ zip(constraints)
+#            apply_constraint(Z, constraintindices, constraint)
+#            println()
+#        end
+#
+#        return
+#
+#        𝒉 = equality_constraints(constraints)
+#        𝒈 = inequality_constraints(constraints)
+#        𝒗 = equality_dual_vector(solver)
+#        𝝀 = inequality_dual_vector(solver)
+#        ℒ = build_lagrangian(𝒇, 𝒉, 𝒈, 𝒗, 𝝀)
+#        ▽ₓ𝒇 = gradient(𝒇)
+#        𝑱ₓ𝒉 = jacobian(𝒉)
+#        𝑱ₓ𝒈 = jacobian(𝒈)
+#        # ▽ₓℒ = gradiant(ℒ)
+#        ▽ₓℒ = ▽ₓ𝒇 + 𝑱ₓ𝒉'𝒗 + 𝑱ₓ𝒈'𝝀
+#        ▽²ₓₓℒ = hessian(▽ₓℒ)
+#
+#        """
+#        Solve QP using Clarabel
+#
+#        minimize   1⁄2𝒙ᵀ𝑷𝒙 + 𝒒ᵀ𝒙
+#        subject to  𝑨𝒙 + 𝒔 = 𝒃
+#                         𝒔 ∈ 𝑲
+#        with decision variables 𝒙 ∈ ℝⁿ, 𝒔 ∈ 𝑲 and data matrices 𝑷 = 𝑷ᵀ ≥ 0,
+#        𝒒 ∈ ℝⁿ, 𝑨 ∈ ℝᵐˣⁿ, and b ∈ ℝᵐ. The convext set 𝑲 is a composition of convex cones.
+#        """
+#        𝑷 = sparse(▽²ₓₓℒ)
+#        𝒒 = sparse(▽ₓℒ)
+#        𝑨 = sparse([𝑱ₓ𝒉;
+#                    𝑱ₓ𝒈;
+#                    ])
+#        𝒃 = [-𝒉;
+#             -𝒈]
+#        𝑲 = [
+#            Clarabel.ZeroConeT(length(𝒉)),
+#            Clarabel.NonnegativeConeT(length(𝒈))]
+#
+#        settings = Clarabel.Settings()
+#        solver   = Clarabel.Solver()
+#        Clarabel.setup!(solver, 𝑷, 𝒒, 𝑨, 𝒃, 𝑲, settings)
+#        result = Clarabel.solve!(solver)
+#        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
+#
+#        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
+#        set_𝒗!(solver, 𝒗ₖ₊₁)
+#        set_𝝀!(solver, 𝝀ₖ₊₁)
+#    end
+#end
+
 function swingup(method::Symbol = :sqp)
     mechanism = doublependulum()
     nx = num_positions(mechanism) + num_velocities(mechanism)
@@ -444,16 +448,11 @@ function swingup(method::Symbol = :sqp)
         StateEqualityConstraint(xf, N:N),
     ]
 
-    initialize_decision_variables(mechanism, tf, Δt, nu)
+    knotpoints = initialize_decision_variables(mechanism, tf, Δt, nu)
 
-#    ################## GREAT BARRIER ##################
-#
-#    # Construct problem depending on method
-#    Problem(model, objective, x0, tf; constraints = constraints)
-#
-#    # Construct solver depending on method
-#    solver = DapplegraySQP(prob)
-#
+    problem = Problem(mechanism, objective, constraints, knotpoints)
+
+    solver = SQP()
 #    solve!(solver)
 end
 
