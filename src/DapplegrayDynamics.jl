@@ -312,7 +312,7 @@ function hermite_simpson_compressed(mechanism::Mechanism, Δt::Real, xₖ::Abstr
     xₖ₊₁ - xₖ - Δt / 6 * (ẋₖ + 4 * ẋₘ + ẋₖ₊₁)
 end
 struct HermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
-    mechanism::Mechanism
+    mechanism::Mechanism{T}
     idx::UnitRange{Int}
 end
 indices(con::HermiteSimpsonConstraint) = length(constraint.idx)
@@ -336,7 +336,7 @@ struct ControlBound{T} <: ControlFunction
         if isnothing(upperbound) && isnothing(lowerbound)
             throw(ArgumentError("At least one of upperbound or lowerbound must be provided."))
         end
-        new{T}(ub, lb, idx)
+        new{T}(upperbound, lowerbound, idx)
     end
 end
 indices(con::ControlBound) = isnothing(upperbound) ? length(lowerbound) : length(upperbound)
@@ -390,7 +390,7 @@ end
 
 function swingup(method::Symbol = :sqp)
     mechanism = doublependulum()
-    n = 4 # state dimension
+    n = num_positions(mechanism) + num_velocities(mechanism)
     m = 1 # control dimension
 
     N = 2
@@ -403,20 +403,22 @@ function swingup(method::Symbol = :sqp)
     #u = view(z, nx+1:nx+nu)
 
     # TODO: Incorporate these into objective and constraints somehow
-    x0 = @SVector zeros(n)
-    xf = @SVector [π, 0, 0, 0]  # swing up
+    x0 = zeros(n)
+    xf = [π, 0, 0, 0]  # swing up
 
-    Q = 0.01 * Diagonal(@SVector ones(n)) * Δt
-    Qf = 100.0 * Diagonal(@SVector ones(n))
-    R = 0.1 * Diagonal(@SVector ones(m)) * Δt
+    Q = 0.01 * I(n) * Δt
+    Qf = 100.0 * I(n)
+    R = 0.1 * I(m) * Δt
 
     objective = [
         LQRCost(Q, R, 1:N-1),
-        StateCost(Qf, N),
+        StateCost(Qf, N:N),
     ]
 
+    τbound = 3.0
     constraints = [
-        HermiteSimpsonConstraint(mechanism, Δt, 1:N),
+        HermiteSimpsonConstraint(mechanism, 1:N),
+        ControlBound([τbound], [-τbound], 1:N-1)
     ]
 
 #    # Terminal goal constraint
