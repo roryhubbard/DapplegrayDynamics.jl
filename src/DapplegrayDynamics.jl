@@ -192,15 +192,12 @@ function doublependulum()::Mechanism
     doublependulum
 end
 
-function simulate_doublependulum()
-    doublependulum = doublependulum()
-    state = MechanismState(doublependulum)
-    set_configuration!(state, shoulder, 0.3)
-    set_configuration!(state, elbow, 0.4)
-    set_velocity!(state, shoulder, 1.)
-    set_velocity!(state, elbow, 2.)
+function simulate_mechanism(mechansim::Mechanism, finaltime::Real, Δt::Real, initial_configuration::AbstractVector, initial_velocity::AbstractVector)
+    state = MechanismState(mechansim)
+    set_configuration!(state, initial_configuration)
+    set_velocity!(state, initial_velocity)
 
-    ts, qs, vs = simulate(state, 5., Δt = 1e-3);
+    simulate(state, finaltime, Δt=Δt);
 end
 
 abstract type AbstractKnotPointsFunction end
@@ -401,21 +398,39 @@ end
 ## Hessian w.r.t. x ONLY:   n × n
 #H = ForwardDiff.hessian(f_x, x_k)
 
+function initialize_decision_variables(mechanism::Mechanism, tf::Real, Δt::Real, nu::Int)
+    ts, qs, vs = simulate_mechanism(mechanism, tf, Δt, [0.0, 0.0], [0.0, 0.0])
+
+    N  = length(ts) # number of knot points
+    zero_u = zeros(nu)
+    knotpoints = Vector{KnotPoint}(undef, N)
+
+    for i in 1:N
+        x  = [qs[i]; vs[i]]
+        t  = ts[i]
+        dt = (i == N) ? 0.0 : Δt # terminal point → dt = 0
+
+        knotpoints[i] = KnotPoint(x, zero_u, t, dt)
+    end
+
+    knotpoints
+end
+
 function swingup(method::Symbol = :sqp)
     mechanism = doublependulum()
-    n = num_positions(mechanism) + num_velocities(mechanism)
-    m = 1 # control dimension
+    nx = num_positions(mechanism) + num_velocities(mechanism)
+    nu = 1 # control dimension
 
     N = 2
-    tf = 2.0           # final time (sec)
+    tf = 1.0           # final time (sec)
     Δt = tf / (N - 1)  # time step (sec)
 
-    x0 = zeros(n)
+    x0 = zeros(nx)
     xf = [π, 0, 0, 0]  # swing up
 
-    Q = 0.01 * I(n) * Δt
-    Qf = 100.0 * I(n)
-    R = 0.1 * I(m) * Δt
+    Q = 0.01 * I(nx) * Δt
+    Qf = 100.0 * I(nx)
+    R = 0.1 * I(nu) * Δt
 
     objective = [
         LQRCost(Q, R, xf, 1:N-1),
@@ -429,53 +444,17 @@ function swingup(method::Symbol = :sqp)
         StateEqualityConstraint(xf, N:N),
     ]
 
-#    # Terminal goal constraint
-#    goalcon = GoalConstraint(xf)
-#    add_constraint!(constraints, goalcon, N)
-#
-#    # Control bounds
-#    ubnd = 3.0
-#    bnd = ControlBound(m, u_min = -ubnd, u_max = ubnd)
-##    bnd = BoundConstraint(n, m, u_min = -ubnd, u_max = ubnd)
-#    add_constraint!(constraints, bnd, 1:N-1)
-#
+    initialize_decision_variables(mechanism, tf, Δt, nu)
+
 #    ################## GREAT BARRIER ##################
 #
 #    # Construct problem depending on method
-#    prob = if method == :altro
-#        Problem(model, objective, x0, tf; constraints = constraints)
-#    elseif method == :sqp
-#        collocation_constraints = HermiteSimpsonConstraint(model, dt)
-#        add_constraint!(constraints, collocation_constraints, 1:N-1)
-#        Problem(model, objective, x0, tf; constraints = constraints)
-#    else
-#        error("Unsupported method: $method. Choose :altro or :sqp.")
-#    end
+#    Problem(model, objective, x0, tf; constraints = constraints)
 #
 #    # Construct solver depending on method
-#    solver = if method == :altro
-#        opts = SolverOptions(
-#            cost_tolerance_intermediate = 1e-2,
-#            penalty_scaling = 10.0,
-#            penalty_initial = 1.0,
-#        )
-#        ALTROSolver(prob, opts)
-#    elseif method == :sqp
-#        DapplegraySQP(prob)
-#    else
-#        error("Unsupported method: $method. Choose :altro or :sqp.")
-#    end
+#    solver = DapplegraySQP(prob)
 #
-#    # Initialization
-#    u0 = @SVector fill(0.01, m)
-#    U0 = [u0 for _ = 1:N-1]
-#    initial_controls!(prob, U0)
-#    rollout!(prob)
-#
-##    set_options!(solver, show_summary = true)
 #    solve!(solver)
-#
-#    prob
 end
 
 end
