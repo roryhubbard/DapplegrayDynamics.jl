@@ -204,7 +204,7 @@ function simulate_doublependulum()
 end
 
 abstract type AbstractKnotPointsFunction end
-indices(::AbstractKnotPointsFunction) = error("indices not implemented")
+indices(func::AbstractKnotPointsFunction) = func.idx
 (::AbstractKnotPointsFunction)(knotpoints) = error("call on knotpoint trajectory not implemented")
 
 abstract type AdjacentKnotPointsFunction <: AbstractKnotPointsFunction end
@@ -315,7 +315,6 @@ struct HermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
     mechanism::Mechanism{T}
     idx::UnitRange{Int}
 end
-indices(con::HermiteSimpsonConstraint) = length(constraint.idx)
 function (con::HermiteSimpsonConstraint)(zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
     xₖ = state(zₖ)
     uₖ = control(zₖ)
@@ -339,7 +338,6 @@ struct ControlBound{T} <: ControlFunction
         new{T}(upperbound, lowerbound, idx)
     end
 end
-indices(con::ControlBound) = isnothing(upperbound) ? length(lowerbound) : length(upperbound)
 function (con::ControlBound)(_, u::AbstractVector)
     ub = con.upperbound
     lb = con.lowerbound
@@ -355,27 +353,34 @@ end
 struct LQRCost <: SingleKnotPointFunction
     Q::AbstractMatrix
     R::AbstractMatrix
+    xd::AbstractVector
+    ud::AbstractVector
     idx::UnitRange{Int}
 end
-indices(cost::LQRCost) = length(cost.idx)
+function LQRCost(Q::AbstractMatrix, R::AbstractMatrix, xd::AbstractVector, idx::UnitRange{Int})
+    ud = zeros(size(R, 2))
+    return LQRCost(Q, R, xd, ud, idx)
+end
 function (cost::LQRCost)(x::AbstractVector, u::AbstractVector)
-    1 / 2 * (x' * cost.Q * x + u' * cost.R * u)
+    x̄ = (x - cost.xd)
+    ū = (u - cost.ud)
+    1 / 2 * (x̄' * cost.Q * x̄ + ū' * cost.R * ū)
 end
 
 struct StateCost <: StateFunction
     Q::AbstractMatrix
+    xd::AbstractVector
     idx::UnitRange{Int}
 end
-indices(cost::StateCost) = length(cost.idx)
 function (cost::StateCost)(x::AbstractVector, _)
-    x' * cost.Q * x
+    x̄ = (x - xd)
+    x̄' * cost.Q * x̄
 end
 
 struct ControlCost <: ControlFunction
     R::AbstractMatrix
     idx::UnitRange{Int}
 end
-indices(cost::ControlCost) = length(cost.idx)
 function (cost::ControlCost)(_, u::AbstractVector)
     u' * cost.R * u
 end
@@ -411,8 +416,7 @@ function swingup(method::Symbol = :sqp)
     R = 0.1 * I(m) * Δt
 
     objective = [
-        LQRCost(Q, R, 1:N-1),
-        StateCost(Qf, N:N),
+        LQRCost(Q, R, xf, 1:N-1),
     ]
 
     τbound = 3.0
