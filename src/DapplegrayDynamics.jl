@@ -350,6 +350,14 @@ function (con::ControlBound)(_, u::AbstractVector)
     end
 end
 
+struct StateEqualityConstraint <: StateFunction
+    xd::AbstractVector
+    idx::UnitRange{Int}
+end
+function (con::StateEqualityConstraint)(x::AbstractVector, _)
+    x - xd
+end
+
 struct LQRCost <: SingleKnotPointFunction
     Q::AbstractMatrix
     R::AbstractMatrix
@@ -402,12 +410,6 @@ function swingup(method::Symbol = :sqp)
     tf = 2.0           # final time (sec)
     Δt = tf / (N - 1)  # time step (sec)
 
-    # consideration for zero copy
-    #z = Vector{Float64}(undef, nx + nu)
-    #x = view(z, 1:nx)
-    #u = view(z, nx+1:nx+nu)
-
-    # TODO: Incorporate these into objective and constraints somehow
     x0 = zeros(n)
     xf = [π, 0, 0, 0]  # swing up
 
@@ -422,7 +424,9 @@ function swingup(method::Symbol = :sqp)
     τbound = 3.0
     constraints = [
         HermiteSimpsonConstraint(mechanism, 1:N),
-        ControlBound([τbound], [-τbound], 1:N-1)
+        ControlBound([τbound], [-τbound], 1:N-1),
+        StateEqualityConstraint(x0, 1:1),
+        StateEqualityConstraint(xf, N:N),
     ]
 
 #    # Terminal goal constraint
