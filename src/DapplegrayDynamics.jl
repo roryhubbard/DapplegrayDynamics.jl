@@ -122,6 +122,11 @@ function simulate_mechanism(mechansim::Mechanism, finaltime::Real, Δt::Real, in
     simulate(state, finaltime, Δt=Δt);
 end
 
+abstract type FunctionInputs end
+struct StateOnly <: FunctionInputs end
+struct ControlOnly <: FunctionInputs end
+struct StateControl <: FunctionInputs end
+
 abstract type AbstractKnotPointsFunction end
 indices(func::AbstractKnotPointsFunction) = func.idx
 (::AbstractKnotPointsFunction)(knotpoints) = error("call on knotpoint trajectory not implemented")
@@ -189,6 +194,17 @@ end
 function (func::ControlFunction)(z::AbstractKnotPoint)
     u = control(u)
     _justcontrolcall(func, u)
+end
+
+struct ClarabelKnotConstraint <: SingleKnotPointFunction
+    A::AbstractMatrix
+    b::AbstractVector
+    cone::SupportedCone
+    functioninputs::FunctionInputs
+    idx::UnitRange{Int}
+end
+function (con::ClarabelKnotConstraint)(z::AbstractVector)
+    A * z - b
 end
 
 function hermite_simpson_separated(mechanism::Mechanism, Δt::Real, xₖ::AbstractVector, uₖ::AbstractVector, xₖ₊₁::AbstractVector, uₖ₊₁::AbstractVector, xₘ::AbstractVector, uₘ::AbstractVector)
@@ -341,7 +357,8 @@ end
 struct Problem
     mechanism::Mechanism
     objective::AbstractVector{<:AbstractKnotPointsFunction}
-    constraints::AbstractVector{<:AbstractKnotPointsFunction}
+    inequality_constraints::AbstractVector{<:AbstractKnotPointsFunction}
+    equality_constraints::AbstractVector{<:AbstractKnotPointsFunction}
     knotpoints::AbstractVector{<:AbstractKnotPoint}
 end
 
@@ -450,7 +467,7 @@ function swingup(method::Symbol = :sqp)
 
     knotpoints = initialize_decision_variables(mechanism, tf, Δt, nu)
 
-    problem = Problem(mechanism, objective, constraints, knotpoints)
+#    problem = Problem(mechanism, objective, constraints, knotpoints)
 
     solver = SQP()
 #    solve!(solver)
