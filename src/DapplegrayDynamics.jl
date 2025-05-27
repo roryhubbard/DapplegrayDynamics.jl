@@ -21,59 +21,6 @@ include("knotpoint.jl")
 #    𝒇 + 𝒗'𝒉 + 𝝀'𝒈
 #end
 
-#function apply_constraint(K, constraintindices, constraint)
-#    println("################### CONSTRAINT ###################")
-#    println(constraint)
-#
-#    T = typeof(constraint)
-#    println("type: ", T)
-#
-#    p = RobotDynamics.output_dim(constraint)
-#    println("output_dim: ", p)
-#
-#    input_dim = RobotDynamics.input_dim(constraint)
-#    println("input_dim: ", input_dim)
-#
-#    input_type = RobotDynamics.functioninputs(constraint)
-#    println("input_type: ", input_type)
-#
-#    sense = TrajectoryOptimization.sense(constraint)
-#    println("sense: ", sense)
-#
-#    for j ∈ constraintindices
-#        println("j: ", j)
-#
-#        k = K[j]
-#        x = RobotDynamics.state(k)
-#        n = RobotDynamics.state_dim(k)
-#        u = RobotDynamics.control(k)
-#        m = RobotDynamics.control_dim(k)
-#        println("state: $n $x")
-#        println("control: $m $u")
-#
-#        y = RobotDynamics.evaluate(constraint, k)
-#        println("evaluate: ", y)
-#
-#        𝑱 = Matrix{Float64}(undef, p, input_dim)
-#        y = Vector{Float64}(undef, p)
-#        RobotDynamics.jacobian!(constraint, 𝑱, y, k)
-#        println("jacobian: ", 𝑱)
-#
-#        𝑯 = Matrix{Float64}(undef, input_dim, input_dim)
-#        𝝀 = zeros(p) # TODO: get this the right way
-#        z_ref = RobotDynamics.getinput(input_type, k)  # this will be x, u, or [x; u]
-#        f(zvec) = RobotDynamics.evaluate(constraint, zvec)
-#        for i = 1:p
-#            fᵢ(zvec) = f(zvec)[i]  # scalar function
-#            Hᵢ = ForwardDiff.hessian(fᵢ, z_ref)
-#            print("row hessian: ", Hᵢ)
-#            𝑯 += 𝝀[i] .* Hᵢ
-#        end
-#        println("sum of hessians: ", 𝑯)
-#    end
-#end
-#
-
 function doublependulum()::Mechanism
     g = -9.81 # gravitational acceleration in z-direction
     world = RigidBody{Float64}("world")
@@ -129,12 +76,13 @@ struct StateControl <: FunctionInputs end
 
 abstract type AbstractKnotPointsFunction end
 indices(func::AbstractKnotPointsFunction) = func.idx
-(::AbstractKnotPointsFunction)(knotpoints) = error("call on knotpoint trajectory not implemented")
+(::AbstractKnotPointsFunction)(knotpoints::AbstractVector{<:AbstractKnotPoint}) = error("call on knotpoint trajectory not implemented")
 
 abstract type AdjacentKnotPointsFunction <: AbstractKnotPointsFunction end
-function (func::AdjacentKnotPointsFunction)(knotpoints)
+function (func::AdjacentKnotPointsFunction)(knotpoints::AbstractVector{<:AbstractKnotPoint})
+    result = 0.0
     for idx ∈ indices(func)
-        func(knotpoints[idx], knotpoints[idx+1])
+        result += func(knotpoints[idx], knotpoints[idx+1])
     end
 end
 function gradient(func::AdjacentKnotPointsFunction, zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
@@ -158,14 +106,16 @@ end
 
 abstract type SingleKnotPointFunction <: AbstractKnotPointsFunction end
 (::SingleKnotPointFunction)(_, _) = error("f(x, u) not implemented")
-function (func::SingleKnotPointFunction)(knotpoints)
+function (func::SingleKnotPointFunction)(knotpoints::AbstractVector{<:AbstractKnotPoint})
+    result = 0.0
     for idx ∈ indices(func)
-        func(knotpoints[idx])
+        result += func(knotpoints[idx])
     end
+    result
 end
 function (func::SingleKnotPointFunction)(z::AbstractKnotPoint)
     x = state(z)
-    u = control(u)
+    u = control(z)
     func(x, u)
 end
 function gradient(func::SingleKnotPointFunction, z::AbstractKnotPoint)
@@ -199,7 +149,7 @@ end
 struct ClarabelKnotConstraint <: SingleKnotPointFunction
     A::AbstractMatrix
     b::AbstractVector
-    cone::SupportedCone
+    cone::Clarabel.SupportedCone
     functioninputs::FunctionInputs
     idx::UnitRange{Int}
 end
@@ -302,7 +252,7 @@ struct LQRCost <: SingleKnotPointFunction
 end
 function LQRCost(Q::AbstractMatrix, R::AbstractMatrix, xd::AbstractVector, idx::UnitRange{Int})
     ud = zeros(size(R, 2))
-    return LQRCost(Q, R, xd, ud, idx)
+    LQRCost(Q, R, xd, ud, idx)
 end
 function (cost::LQRCost)(x::AbstractVector, u::AbstractVector)
     x̄ = (x - cost.xd)
@@ -328,14 +278,6 @@ function (cost::ControlCost)(_, u::AbstractVector)
     u' * cost.R * u
 end
 
-## hessian w.r.t to only state even though function sig takes u too
-#dummy_u = nothing              # can also be `SVector{0,Float64}()`
-#f_x = x -> cost(x, dummy_u)    # Rⁿ → ℝ  (u is fixed & unused)
-## current state at knot-point k
-#x_k = @SVector randn(n)        # replace with your real state
-## Hessian w.r.t. x ONLY:   n × n
-#H = ForwardDiff.hessian(f_x, x_k)
-
 function initialize_decision_variables(mechanism::Mechanism, tf::Real, Δt::Real, nu::Int)
     ts, qs, vs = simulate_mechanism(mechanism, tf, Δt, [0.0, 0.0], [0.0, 0.0])
 
@@ -356,43 +298,40 @@ end
 
 struct Problem
     mechanism::Mechanism
-    objective::AbstractVector{<:AbstractKnotPointsFunction}
+    objectives::AbstractVector{<:AbstractKnotPointsFunction}
     inequality_constraints::AbstractVector{<:AbstractKnotPointsFunction}
     equality_constraints::AbstractVector{<:AbstractKnotPointsFunction}
     knotpoints::AbstractVector{<:AbstractKnotPoint}
+end
+function objectives(problem::Problem)
+    problem.objectives
+end
+function inequality_constraints(problem::Problem)
+    problem.inequality_constraints
+end
+function equality_constraints(problem::Problem)
+    problem.equality_constraints
+end
+function knotpoints(problem::Problem)
+    problem.knotpoints
+end
+function evaluate_objective(problem::Problem)
+    result = 0.0
+    Z = knotpoints(problem)
+    for objective ∈ objectives(problem)
+        result += objective(Z)
+    end
+    result
 end
 
 struct SQP
 end
 
-#function solve!(solver::SQP, problem::Problem)
-#    for _ = 1:1 # TODO: repeat until convergence criteria is met
-#        𝒇 = get_objective(problem)
-#        constraints = get_constraints(problem)
-#
-#        Z = get_trajectory(solver.problem)
-#        println("trajectory: ", Z)
-#
-#        K = RobotDynamics.getdata(Z)
-#        println("K: ", K)
-#
-#        X = states(Z)
-#        println("X: ", X)
-#
-#        U = controls(Z)
-#        println("U: ", U)
-#
-#        times = gettimes(Z)
-#        println("times: ", times)
-#        println()
-#
-#        for (constraintindices, constraint) ∈ zip(constraints)
-#            apply_constraint(Z, constraintindices, constraint)
-#            println()
-#        end
-#
-#        return
-#
+function solve!(solver::SQP, problem::Problem)
+    for _ = 1:1 # TODO: repeat until convergence criteria is met
+        fₖ = evaluate_objective(problem)
+        println(fₖ)
+
 #        𝒉 = equality_constraints(constraints)
 #        𝒈 = inequality_constraints(constraints)
 #        𝒗 = equality_dual_vector(solver)
@@ -434,8 +373,8 @@ end
 #        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
 #        set_𝒗!(solver, 𝒗ₖ₊₁)
 #        set_𝝀!(solver, 𝝀ₖ₊₁)
-#    end
-#end
+    end
+end
 
 function swingup(method::Symbol = :sqp)
     mechanism = doublependulum()
@@ -453,24 +392,26 @@ function swingup(method::Symbol = :sqp)
     Qf = 100.0 * I(nx)
     R = 0.1 * I(nu) * Δt
 
-    objective = [
+    objectives = [
         LQRCost(Q, R, xf, 1:N-1),
     ]
 
     τbound = 3.0
-    constraints = [
-        HermiteSimpsonConstraint(mechanism, 1:N),
+    inequality_constraints = [
         ControlBound([τbound], [-τbound], 1:N-1),
+    ]
+    equality_constraints = [
+        HermiteSimpsonConstraint(mechanism, 1:N),
         StateEqualityConstraint(x0, 1:1),
         StateEqualityConstraint(xf, N:N),
     ]
 
     knotpoints = initialize_decision_variables(mechanism, tf, Δt, nu)
 
-#    problem = Problem(mechanism, objective, constraints, knotpoints)
+    problem = Problem(mechanism, objectives, inequality_constraints, equality_constraints, knotpoints)
 
     solver = SQP()
-#    solve!(solver)
+    solve!(solver, problem)
 end
 
 end
