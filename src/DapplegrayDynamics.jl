@@ -84,6 +84,10 @@ function (func::AdjacentKnotPointsFunction)(knotpoints::AbstractVector{<:Abstrac
     for idx ∈ indices(func)
         result += func(knotpoints[idx], knotpoints[idx+1])
     end
+    result
+end
+function (func::AdjacentKnotPointsFunction)(knotpoints::AbstractVector{<:AbstractKnotPoint})
+    vcat(map(idx -> func(knotpoints[idx], knotpoints[idx+1]), indices(func))...)
 end
 function gradient(func::AdjacentKnotPointsFunction, zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
     z = [zₖ; zₖ₊₁]
@@ -299,18 +303,18 @@ end
 struct Problem
     mechanism::Mechanism
     objectives::AbstractVector{<:AbstractKnotPointsFunction}
-    inequality_constraints::AbstractVector{<:AbstractKnotPointsFunction}
     equality_constraints::AbstractVector{<:AbstractKnotPointsFunction}
+    inequality_constraints::AbstractVector{<:AbstractKnotPointsFunction}
     knotpoints::AbstractVector{<:AbstractKnotPoint}
 end
 function objectives(problem::Problem)
     problem.objectives
 end
-function inequality_constraints(problem::Problem)
-    problem.inequality_constraints
-end
 function equality_constraints(problem::Problem)
     problem.equality_constraints
+end
+function inequality_constraints(problem::Problem)
+    problem.inequality_constraints
 end
 function knotpoints(problem::Problem)
     problem.knotpoints
@@ -323,6 +327,12 @@ function evaluate_objective(problem::Problem)
     end
     result
 end
+function evaluate_equality_constraints(problem::Problem)
+    Z = knotpoints(problem)
+    for constraint ∈ equality_constraints(problem)
+        result += objective(Z)
+    end
+end
 
 struct SQP
 end
@@ -330,7 +340,9 @@ end
 function solve!(solver::SQP, problem::Problem)
     for _ = 1:1 # TODO: repeat until convergence criteria is met
         fₖ = evaluate_objective(problem)
-        println(fₖ)
+        println("fₖ: ", fₖ)
+
+        hₖ = evaluate_equality_constraints(problem)
 
 #        𝒉 = equality_constraints(constraints)
 #        𝒈 = inequality_constraints(constraints)
