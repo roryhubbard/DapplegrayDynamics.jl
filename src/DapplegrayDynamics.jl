@@ -81,6 +81,7 @@ struct VectorOutput <: FunctionOutput end
 abstract type AbstractKnotPointsFunction end
 indices(func::AbstractKnotPointsFunction) = func.idx
 outputtype(func::AbstractKnotPointsFunction) = error("outputtype not defined")
+outputdim() = error("outputdim not defined")
 (::AbstractKnotPointsFunction)(knotpoints::AbstractVector{<:AbstractKnotPoint}) = error("call on knotpoint trajectory not implemented")
 
 abstract type AdjacentKnotPointsFunction <: AbstractKnotPointsFunction end
@@ -224,6 +225,7 @@ struct HermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
     idx::UnitRange{Int}
 end
 outputtype(::HermiteSimpsonConstraint) = VectorOutput()
+outputdim(con::HermiteSimpsonConstraint) = num_positions(con.mechanism) + num_velocities(con.mechanism)
 function (con::HermiteSimpsonConstraint)(zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
     xₖ = state(zₖ)
     uₖ = control(zₖ)
@@ -248,6 +250,7 @@ struct ControlBound{T} <: ControlFunction
     end
 end
 outputtype(::ControlBound) = VectorOutput()
+outputdim(con::ControlBound) = isnothing(con.upperbound) ? length(con.lowerbound) : length(con.upperbound)
 function (con::ControlBound)(::Union{AbstractVector, Nothing}, u::AbstractVector)
     ub = con.upperbound
     lb = con.lowerbound
@@ -265,6 +268,7 @@ struct StateEqualityConstraint <: StateFunction
     idx::UnitRange{Int}
 end
 outputtype(::StateEqualityConstraint) = VectorOutput()
+outputdim(con::StateEqualityConstraint) = length(con.xd)
 function (con::StateEqualityConstraint)(x::AbstractVector, _)
     x - con.xd
 end
@@ -277,6 +281,7 @@ struct LQRCost <: SingleKnotPointFunction
     idx::UnitRange{Int}
 end
 outputtype(::LQRCost) = ScalarOutput()
+outputdim(::LQRCost) = 1
 function LQRCost(Q::AbstractMatrix, R::AbstractMatrix, xd::AbstractVector, idx::UnitRange{Int})
     ud = zeros(size(R, 2))
     LQRCost(Q, R, xd, ud, idx)
@@ -293,6 +298,7 @@ struct StateCost <: StateFunction
     idx::UnitRange{Int}
 end
 outputtype(::StateCost) = ScalarOutput()
+outputdim(::StateCost) = 1
 function (cost::StateCost)(x::AbstractVector, _)
     x̄ = (x - cost.xd)
     x̄' * cost.Q * x̄
@@ -303,6 +309,7 @@ struct ControlCost <: ControlFunction
     idx::UnitRange{Int}
 end
 outputtype(::ControlCost) = ScalarOutput()
+outputdim(::ControlCost) = 1
 function (cost::ControlCost)(_, u::AbstractVector)
     u' * cost.R * u
 end
@@ -321,6 +328,14 @@ function initialize_decision_variables(mechanism::Mechanism, tf::Real, Δt::Real
     end
 
     knotpoints
+end
+
+function num_lagrange_multipliers(constraints::AbstractVector{<:AbstractKnotPointsFunction})
+    result = 0
+    for constraint ∈ constraints
+        result += outputdim(constraint) * length(indices(constraint))
+    end
+    result
 end
 
 struct Problem
@@ -372,6 +387,11 @@ struct SQP
 end
 
 function solve!(solver::SQP, problem::Problem)
+    v = zeros(num_lagrange_multipliers(equality_constraints(problem)))
+    println("v: ", v)
+    λ = zeros(num_lagrange_multipliers(inequality_constraints(problem)))
+    println("λ: ", λ)
+
     for k = 1:1 # TODO: repeat until convergence criteria is met
         fₖ = evaluate_objective(problem)
         println("fₖ: ", fₖ)
@@ -381,8 +401,7 @@ function solve!(solver::SQP, problem::Problem)
 
         gₖ = evaluate_constraints(inequality_constraints(problem), knotpoints(problem))
         println("gₖ: ", hₖ)
-#        𝒗 = equality_dual_vector(solver)
-#        𝝀 = inequality_dual_vector(solver)
+
 #        ℒ = build_lagrangian(𝒇, 𝒉, 𝒈, 𝒗, 𝝀)
 #        ▽ₓ𝒇 = gradient(𝒇)
 #        𝑱ₓ𝒉 = jacobian(𝒉)
