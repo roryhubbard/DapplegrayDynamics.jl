@@ -74,21 +74,27 @@ struct StateOnly <: FunctionInputs end
 struct ControlOnly <: FunctionInputs end
 struct StateControl <: FunctionInputs end
 
+abstract type FunctionOutput end
+struct ScalarOutput <: FunctionOutput end
+struct VectorOutput <: FunctionOutput end
+
 abstract type AbstractKnotPointsFunction end
 indices(func::AbstractKnotPointsFunction) = func.idx
+outputtype(func::AbstractKnotPointsFunction) = error("outputtype not defined")
 (::AbstractKnotPointsFunction)(knotpoints::AbstractVector{<:AbstractKnotPoint}) = error("call on knotpoint trajectory not implemented")
 
 abstract type AdjacentKnotPointsFunction <: AbstractKnotPointsFunction end
-function (func::AdjacentKnotPointsFunction)(knotpoints::AbstractVector{<:AbstractKnotPoint})
+function (func::AdjacentKnotPointsFunction)(::ScalarOutput, knotpoints::AbstractVector{<:AbstractKnotPoint})
     result = 0.0
     for idx ∈ indices(func)
         result += func(knotpoints[idx], knotpoints[idx+1])
     end
     result
 end
-function (func::AdjacentKnotPointsFunction)(knotpoints::AbstractVector{<:AbstractKnotPoint})
+function (func::AdjacentKnotPointsFunction)(::VectorOutput, knotpoints::AbstractVector{<:AbstractKnotPoint})
     vcat(map(idx -> func(knotpoints[idx], knotpoints[idx+1]), indices(func))...)
 end
+(func::AdjacentKnotPointsFunction)(knotpoints::AbstractVector{<:AbstractKnotPoint}) = func(outputtype(func), knotpoints)
 function gradient(func::AdjacentKnotPointsFunction, zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
     z = [zₖ; zₖ₊₁]
     nₖ = length(zₖ)
@@ -110,12 +116,15 @@ end
 
 abstract type SingleKnotPointFunction <: AbstractKnotPointsFunction end
 (::SingleKnotPointFunction)(_, _) = error("f(x, u) not implemented")
-function (func::SingleKnotPointFunction)(knotpoints::AbstractVector{<:AbstractKnotPoint})
+function (func::SingleKnotPointFunction)(::ScalarOutput, knotpoints::AbstractVector{<:AbstractKnotPoint})
     result = 0.0
     for idx ∈ indices(func)
         result += func(knotpoints[idx])
     end
     result
+end
+function (func::SingleKnotPointFunction)(::VectorOutput, knotpoints::AbstractVector{<:AbstractKnotPoint})
+    vcat(map(idx -> func(knotpoints[idx]), indices(func))...)
 end
 function (func::SingleKnotPointFunction)(z::AbstractKnotPoint)
     x = state(z)
@@ -146,7 +155,7 @@ function _justcontrolcall(func::ControlFunction, u::AbstractVector)
     func(nothing, u)
 end
 function (func::ControlFunction)(z::AbstractKnotPoint)
-    u = control(u)
+    u = control(z)
     _justcontrolcall(func, u)
 end
 
@@ -157,6 +166,7 @@ struct ClarabelKnotConstraint <: SingleKnotPointFunction
     functioninputs::FunctionInputs
     idx::UnitRange{Int}
 end
+outputtype(::ClarabelKnotConstraint) = VectorOutput()
 function (con::ClarabelKnotConstraint)(z::AbstractVector)
     A * z - b
 end
@@ -204,6 +214,7 @@ struct HermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
     mechanism::Mechanism{T}
     idx::UnitRange{Int}
 end
+outputtype(::HermiteSimpsonConstraint) = VectorOutput()
 function (con::HermiteSimpsonConstraint)(zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
     xₖ = state(zₖ)
     uₖ = control(zₖ)
@@ -227,15 +238,16 @@ struct ControlBound{T} <: ControlFunction
         new{T}(upperbound, lowerbound, idx)
     end
 end
-function (con::ControlBound)(_, u::AbstractVector)
+outputtype(::ControlBound) = VectorOutput()
+function (con::ControlBound)(::Union{AbstractVector, Nothing}, u::AbstractVector)
     ub = con.upperbound
     lb = con.lowerbound
     if isnothing(ub)
-        return lb .- u
+        return lb - u
     elseif isnothing(lb)
-        return u .- ub
+        return u - ub
     else
-        return [lb .- u; u .- ub]
+        return [lb - u; u - ub]
     end
 end
 
@@ -243,6 +255,7 @@ struct StateEqualityConstraint <: StateFunction
     xd::AbstractVector
     idx::UnitRange{Int}
 end
+outputtype(::StateEqualityConstraint) = VectorOutput()
 function (con::StateEqualityConstraint)(x::AbstractVector, _)
     x - xd
 end
@@ -254,6 +267,7 @@ struct LQRCost <: SingleKnotPointFunction
     ud::AbstractVector
     idx::UnitRange{Int}
 end
+outputtype(::LQRCost) = ScalarOutput()
 function LQRCost(Q::AbstractMatrix, R::AbstractMatrix, xd::AbstractVector, idx::UnitRange{Int})
     ud = zeros(size(R, 2))
     LQRCost(Q, R, xd, ud, idx)
@@ -269,6 +283,7 @@ struct StateCost <: StateFunction
     xd::AbstractVector
     idx::UnitRange{Int}
 end
+outputtype(::StateCost) = ScalarOutput()
 function (cost::StateCost)(x::AbstractVector, _)
     x̄ = (x - xd)
     x̄' * cost.Q * x̄
@@ -278,6 +293,7 @@ struct ControlCost <: ControlFunction
     R::AbstractMatrix
     idx::UnitRange{Int}
 end
+outputtype(::ControlCost) = ScalarOutput()
 function (cost::ControlCost)(_, u::AbstractVector)
     u' * cost.R * u
 end
@@ -320,18 +336,30 @@ function knotpoints(problem::Problem)
     problem.knotpoints
 end
 function evaluate_objective(problem::Problem)
-    result = 0.0
     Z = knotpoints(problem)
+    result = 0.0
     for objective ∈ objectives(problem)
-        result += objective(Z)
+        result += objective(outputtype(objective), Z)
     end
     result
 end
 function evaluate_equality_constraints(problem::Problem)
     Z = knotpoints(problem)
-    for constraint ∈ equality_constraints(problem)
-        result += objective(Z)
+    result = Vector{Float64}()
+
+    for constraint in equality_constraints(problem)
+        val = constraint(outputtype(constraint), Z)
+
+        if outputtype(constraint) isa ScalarOutput
+            push!(result, val)  # scalar → 1-element appended
+        elseif outputtype(constraint) isa VectorOutput
+            append!(result, val)  # append all vector elements
+        else
+            error("Unknown output type")
+        end
     end
+
+    return result
 end
 
 struct SQP
@@ -343,6 +371,7 @@ function solve!(solver::SQP, problem::Problem)
         println("fₖ: ", fₖ)
 
         hₖ = evaluate_equality_constraints(problem)
+        println("hₖ: ", hₖ)
 
 #        𝒉 = equality_constraints(constraints)
 #        𝒈 = inequality_constraints(constraints)
