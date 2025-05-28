@@ -171,18 +171,24 @@ function (con::ClarabelKnotConstraint)(z::AbstractVector)
     A * z - b
 end
 
+# TODO: dynamics! assumes fully actuated systems, figure out a method for
+# dealing with control vectors that are smaller in rank than the vector of
+# "velocities" in mechanism state
 function hermite_simpson_separated(mechanism::Mechanism, Δt::Real, xₖ::AbstractVector, uₖ::AbstractVector, xₖ₊₁::AbstractVector, uₖ₊₁::AbstractVector, xₘ::AbstractVector, uₘ::AbstractVector)
     mechanismstate = MechanismState(mechanism)
     dynamicsresult = DynamicsResult(mechanism)
 
+    τₖ = vcat(0., uₖ)
     ẋₖ = similar(xₖ)
-    dynamics!(ẋₖ, dynamicsresult, mechanismstate, xₖ, uₖ)
+    dynamics!(ẋₖ, dynamicsresult, mechanismstate, xₖ, τₖ)
 
+    τₖ₊₁ = vcat(0., uₖ₊₁)
     ẋₖ₊₁ = similar(xₖ₊₁)
-    dynamics!(ẋₖ₊₁, dynamicsresult, mechanismstate, xₖ₊₁, uₖ₊₁)
+    dynamics!(ẋₖ₊₁, dynamicsresult, mechanismstate, xₖ₊₁, τₖ₊₁)
 
+    τₘ = vcat(0., uₘ)
     ẋₘ = similar(xₖ)
-    dynamics!(ẋₘ, dynamicsresult, mechanismstate, xₘ, uₘ)
+    dynamics!(ẋₘ, dynamicsresult, mechanismstate, xₘ, τₘ)
 
     c₁ = xₖ₊₁ - xₖ - Δt / 6 * (ẋₖ + 4 * ẋₘ + ẋₖ₊₁)
     c₂ = ẋₘ - 1 / 2 * (xₖ + xₖ₊₁) - Δt / 8 * (ẋₖ - ẋₖ₊₁)
@@ -192,11 +198,13 @@ function hermite_simpson_compressed(mechanism::Mechanism, Δt::Real, xₖ::Abstr
     mechanismstate = MechanismState(mechanism)
     dynamicsresult = DynamicsResult(mechanism)
 
+    τₖ = vcat(0., uₖ)
     ẋₖ = similar(xₖ)
-    dynamics!(ẋₖ, dynamicsresult, mechanismstate, xₖ, uₖ)
+    dynamics!(ẋₖ, dynamicsresult, mechanismstate, xₖ, τₖ)
 
+    τₖ₊₁ = vcat(0., uₖ₊₁)
     ẋₖ₊₁ = similar(xₖ₊₁)
-    dynamics!(ẋₖ₊₁, dynamicsresult, mechanismstate, xₖ₊₁, uₖ₊₁)
+    dynamics!(ẋₖ₊₁, dynamicsresult, mechanismstate, xₖ₊₁, τₖ₊₁)
 
     # We could add the collocation point as an extra decision varaible and
     # constraint. This would be "separated form". Here we are implementing
@@ -204,8 +212,9 @@ function hermite_simpson_compressed(mechanism::Mechanism, Δt::Real, xₖ::Abstr
     # for the integral of the system dynamics.
     xₘ = 1 / 2 * (xₖ + xₖ₊₁) + Δt / 8 * (ẋₖ - ẋₖ₊₁)
     uₘ = 1 / 2 * (uₖ + uₖ₊₁)
+    τₘ = vcat(0., uₘ)
     ẋₘ = similar(xₖ)
-    dynamics!(ẋₘ, dynamicsresult, mechanismstate, xₘ, uₘ)
+    dynamics!(ẋₘ, dynamicsresult, mechanismstate, xₘ, τₘ)
 
     # equality constraint: xₖ₊₁ - xₖ = (Δt / 6) * (fₖ + 4fcol + fₖ₊₁)
     xₖ₊₁ - xₖ - Δt / 6 * (ẋₖ + 4 * ẋₘ + ẋₖ₊₁)
@@ -257,7 +266,7 @@ struct StateEqualityConstraint <: StateFunction
 end
 outputtype(::StateEqualityConstraint) = VectorOutput()
 function (con::StateEqualityConstraint)(x::AbstractVector, _)
-    x - xd
+    x - con.xd
 end
 
 struct LQRCost <: SingleKnotPointFunction
@@ -285,7 +294,7 @@ struct StateCost <: StateFunction
 end
 outputtype(::StateCost) = ScalarOutput()
 function (cost::StateCost)(x::AbstractVector, _)
-    x̄ = (x - xd)
+    x̄ = (x - cost.xd)
     x̄' * cost.Q * x̄
 end
 
@@ -301,16 +310,14 @@ end
 function initialize_decision_variables(mechanism::Mechanism, tf::Real, Δt::Real, nu::Int)
     ts, qs, vs = simulate_mechanism(mechanism, tf, Δt, [0.0, 0.0], [0.0, 0.0])
 
-    N  = length(ts) # number of knot points
+    N  = length(ts)
     zero_u = zeros(nu)
     knotpoints = Vector{KnotPoint}(undef, N)
 
     for i in 1:N
         x  = [qs[i]; vs[i]]
         t  = ts[i]
-        dt = (i == N) ? 0.0 : Δt # terminal point → dt = 0
-
-        knotpoints[i] = KnotPoint(x, zero_u, t, dt)
+        knotpoints[i] = KnotPoint(x, zero_u, t, Δt)
     end
 
     knotpoints
@@ -343,12 +350,11 @@ function evaluate_objective(problem::Problem)
     end
     result
 end
-function evaluate_equality_constraints(problem::Problem)
-    Z = knotpoints(problem)
+function evaluate_constraints(constraints::AbstractVector{<:AbstractKnotPointsFunction}, knotpoints::AbstractVector{<:AbstractKnotPoint})
     result = Vector{Float64}()
 
-    for constraint in equality_constraints(problem)
-        val = constraint(outputtype(constraint), Z)
+    for constraint in constraints
+        val = constraint(outputtype(constraint), knotpoints)
 
         if outputtype(constraint) isa ScalarOutput
             push!(result, val)  # scalar → 1-element appended
@@ -366,15 +372,15 @@ struct SQP
 end
 
 function solve!(solver::SQP, problem::Problem)
-    for _ = 1:1 # TODO: repeat until convergence criteria is met
+    for k = 1:1 # TODO: repeat until convergence criteria is met
         fₖ = evaluate_objective(problem)
         println("fₖ: ", fₖ)
 
-        hₖ = evaluate_equality_constraints(problem)
+        hₖ = evaluate_constraints(equality_constraints(problem), knotpoints(problem))
         println("hₖ: ", hₖ)
 
-#        𝒉 = equality_constraints(constraints)
-#        𝒈 = inequality_constraints(constraints)
+        gₖ = evaluate_constraints(inequality_constraints(problem), knotpoints(problem))
+        println("gₖ: ", hₖ)
 #        𝒗 = equality_dual_vector(solver)
 #        𝝀 = inequality_dual_vector(solver)
 #        ℒ = build_lagrangian(𝒇, 𝒉, 𝒈, 𝒗, 𝝀)
@@ -442,14 +448,14 @@ function swingup(method::Symbol = :sqp)
         ControlBound([τbound], [-τbound], 1:N-1),
     ]
     equality_constraints = [
-        HermiteSimpsonConstraint(mechanism, 1:N),
+        HermiteSimpsonConstraint(mechanism, 1:N-1),
         StateEqualityConstraint(x0, 1:1),
         StateEqualityConstraint(xf, N:N),
     ]
 
     knotpoints = initialize_decision_variables(mechanism, tf, Δt, nu)
 
-    problem = Problem(mechanism, objectives, inequality_constraints, equality_constraints, knotpoints)
+    problem = Problem(mechanism, objectives, equality_constraints, inequality_constraints, knotpoints)
 
     solver = SQP()
     solve!(solver, problem)
