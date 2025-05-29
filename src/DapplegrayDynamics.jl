@@ -141,6 +141,29 @@ end
 function hessian(func::SingleKnotPointFunction, z::AbstractKnotPoint)
     ForwardDiff.hessian(func, z)
 end
+function gradient(func::SingleKnotPointFunction, knotpoints::AbstractVector{<:AbstractKnotPoint})
+    rows = indices(func)
+    I, J, V = Int[], Int[], Float64[]
+
+    for (i, idx) in enumerate(rows)
+        g = gradient(func, knotpoints[idx])
+        for (j, val) in pairs(g)
+            push!(I, i)
+            push!(J, j)
+            push!(V, val)
+        end
+    end
+
+    m = length(rows)
+    n = length(knotpoints[1]) * length(knotpoints)
+    return sparse(I, J, V, m, n)
+end
+function gradient(funcs::AbstractVector{<:SingleKnotPointFunction}, knotpoints::AbstractVector{<:AbstractKnotPoint})
+    for func ∈ funcs
+        r = gradient(func, knotpoints)
+        print(r)
+    end
+end
 
 abstract type StateFunction <: SingleKnotPointFunction end
 function _juststatecall(func::StateFunction, x::AbstractVector)
@@ -357,14 +380,15 @@ end
 function knotpoints(problem::Problem)
     problem.knotpoints
 end
-function evaluate_objective(problem::Problem)
-    Z = knotpoints(problem)
+
+function evaluate_objective(objectives::AbstractVector{<:AbstractKnotPointsFunction}, knotpoints::AbstractVector{<:AbstractKnotPoint})
     result = 0.0
-    for objective ∈ objectives(problem)
-        result += objective(outputtype(objective), Z)
+    for objective ∈ objectives
+        result += objective(outputtype(objective), knotpoints)
     end
     result
 end
+
 function evaluate_constraints(constraints::AbstractVector{<:AbstractKnotPointsFunction}, knotpoints::AbstractVector{<:AbstractKnotPoint})
     result = Vector{Float64}()
 
@@ -389,11 +413,12 @@ end
 function solve!(solver::SQP, problem::Problem)
     v = zeros(num_lagrange_multipliers(equality_constraints(problem)))
     println("v: ", v)
+
     λ = zeros(num_lagrange_multipliers(inequality_constraints(problem)))
     println("λ: ", λ)
 
     for k = 1:1 # TODO: repeat until convergence criteria is met
-        fₖ = evaluate_objective(problem)
+        fₖ = evaluate_objective(objectives(problem), knotpoints(problem))
         println("fₖ: ", fₖ)
 
         hₖ = evaluate_constraints(equality_constraints(problem), knotpoints(problem))
@@ -401,6 +426,10 @@ function solve!(solver::SQP, problem::Problem)
 
         gₖ = evaluate_constraints(inequality_constraints(problem), knotpoints(problem))
         println("gₖ: ", hₖ)
+
+        ▽f = gradient(objectives(problem), knotpoints(problem))
+#        Jₕ = gradient(equality_constraints(problem), knotpoints(problem))
+#        Jg = gradient(equality_constraints(problem), knotpoints(problem))
 
 #        ℒ = build_lagrangian(𝒇, 𝒉, 𝒈, 𝒗, 𝝀)
 #        ▽ₓ𝒇 = gradient(𝒇)
