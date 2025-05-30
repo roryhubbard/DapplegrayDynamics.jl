@@ -7,7 +7,7 @@ using RigidBodyDynamics
 using SparseArrays
 using StaticArrays
 
-export swingup, doublependulum
+export fj, doublependulum
 
 include("knotpoint.jl")
 
@@ -141,28 +141,32 @@ end
 function hessian(func::SingleKnotPointFunction, z::AbstractKnotPoint)
     ForwardDiff.hessian(func, z)
 end
-function gradient(func::SingleKnotPointFunction, knotpoints::AbstractVector{<:AbstractKnotPoint})
-    rows = indices(func)
-    I, J, V = Int[], Int[], Float64[]
+function gradient!(▽f_row_stacked::AbstractMatrix, func::SingleKnotPointFunction, knotpoints::AbstractVector{<:AbstractKnotPoint})
+    trajectory_indices = indices(func)
+    kdim = length(knotpoints[1])
 
-    for (i, idx) in enumerate(rows)
-        g = gradient(func, knotpoints[idx])
-        for (j, val) in pairs(g)
-            push!(I, i)
-            push!(J, j)
-            push!(V, val)
-        end
+    for (i, idx) in enumerate(trajectory_indices)
+        ▽f = gradient(func, knotpoints[idx])
+        row_idx_start = kdim * idx + 1
+        ▽f_row_stacked[i, row_idx_start:row_idx_start + kdim - 1] = ▽f
     end
 
-    m = length(rows)
-    n = length(knotpoints[1]) * length(knotpoints)
-    return sparse(I, J, V, m, n)
+    ▽f_row_stacked
 end
 function gradient(funcs::AbstractVector{<:SingleKnotPointFunction}, knotpoints::AbstractVector{<:AbstractKnotPoint})
+    kdim = length(knotpoints[1])
+    m = sum(length(indices(func)) for func in funcs)
+    n = kdim * length(knotpoints)
+    ▽f_row_stacked = zeros(Float64, m, n)
+
+    current_row_idx = 1
     for func ∈ funcs
-        r = gradient(func, knotpoints)
-        print(r)
+        ▽f_block_rows = length(indices(func))
+        gradient!(▽f_row_stacked[current_row_idx:▽f_block_rows, :], func, knotpoints)
+        current_row_idx += ▽f_block_rows
     end
+
+    sparse(▽f_row_stacked)
 end
 
 abstract type StateFunction <: SingleKnotPointFunction end
@@ -427,7 +431,8 @@ function solve!(solver::SQP, problem::Problem)
         gₖ = evaluate_constraints(inequality_constraints(problem), knotpoints(problem))
         println("gₖ: ", hₖ)
 
-        ▽f = gradient(objectives(problem), knotpoints(problem))
+        ▽f_row_stacked = gradient(objectives(problem), knotpoints(problem))
+        println("▽f_row_stacked: ", ▽f_row_stacked)
 #        Jₕ = gradient(equality_constraints(problem), knotpoints(problem))
 #        Jg = gradient(equality_constraints(problem), knotpoints(problem))
 
@@ -471,7 +476,7 @@ function solve!(solver::SQP, problem::Problem)
     end
 end
 
-function swingup(method::Symbol = :sqp)
+function fj(method::Symbol = :sqp)
     mechanism = doublependulum()
     nx = num_positions(mechanism) + num_velocities(mechanism)
     nu = 1 # control dimension
