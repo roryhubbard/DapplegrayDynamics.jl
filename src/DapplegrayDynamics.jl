@@ -99,14 +99,42 @@ end
 function gradient(func::AdjacentKnotPointsFunction, zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
     z = [zₖ; zₖ₊₁]
     nₖ = length(zₖ)
-    func_stacked_knots(z) = func(z[1:nₖ], z[nₖ+1:end])
+    func_stacked_knots(z) = func(view(z, 1:nₖ), view(z, nₖ+1:length(z)))
     ForwardDiff.gradient(func_stacked_knots, z)
 end
-function jacobian(func::AdjacentKnotPointsFunction, zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
-    z = [zₖ; zₖ₊₁]
+function jacobian!(J::SubArray, func::AdjacentKnotPointsFunction, zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
+    z = [getdata(zₖ); getdata(zₖ₊₁)]
     nₖ = length(zₖ)
-    func_stacked_knots(z) = func(z[1:nₖ], z[nₖ+1:end])
-    ForwardDiff.jacobian(func_stacked_knots, z)
+    func_stacked_knots(z) = func(view(z, 1:nₖ), view(z, nₖ+1:length(z)))
+    ForwardDiff.jacobian!(J, func_stacked_knots, z)
+end
+function jacobian!(J_vstacked::SubArray, func::AdjacentKnotPointsFunction, knotpoints::AbstractVector{<:AbstractKnotPoint})
+    trajectory_indices = indices(func)
+    kdim = 2 * length(knotpoints[1])
+    Jheight = outputdim(func)
+
+    for (i, idx) in enumerate(trajectory_indices)
+        row₀ = (i - 1) * Jheight + 1
+        col₀ = kdim * (idx - 1) + 1
+        band_view = view(J_vstacked, row₀:row₀ + Jheight - 1, col₀:col₀ + kdim - 1)
+        jacobian!(band_view, func, knotpoints[idx], knotpoints[idx+1])
+    end
+end
+function jacobian(funcs::AbstractVector{<:AdjacentKnotPointsFunction}, knotpoints::AbstractVector{<:AbstractKnotPoint})
+    kdim = length(knotpoints[1])
+    m = sum(length(indices(func)) * outputdim(func) for func in funcs)
+    n = kdim * length(knotpoints)
+    J_vstacked = zeros(Float64, m, n)
+
+    current_row_idx = 1
+    for func ∈ funcs
+        band_height = length(indices(func)) * outputdim(func)
+        band_view = view(J_vstacked, current_row_idx:band_height, :)
+        jacobian!(band_view, func, knotpoints)
+        current_row_idx += band_height
+    end
+
+    sparse(J_vstacked)
 end
 function hessian(func::AdjacentKnotPointsFunction, zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
     z = [zₖ; zₖ₊₁]
@@ -171,7 +199,7 @@ function jacobian!(J_vstacked::SubArray, func::SingleKnotPointFunction, knotpoin
 
     for (i, idx) in enumerate(trajectory_indices)
         row₀ = (i - 1) * Jheight + 1
-        col₀ = kdim * idx + 1
+        col₀ = kdim * (idx - 1) + 1
         band_view = view(J_vstacked, row₀:row₀ + Jheight - 1, col₀:col₀ + kdim - 1)
         jacobian!(band_view, func, knotpoints[idx])
     end
@@ -233,6 +261,8 @@ function hermite_simpson_separated(mechanism::Mechanism, Δt::Real, xₖ::Abstra
     mechanismstate = MechanismState(mechanism)
     dynamicsresult = DynamicsResult(mechanism)
 
+    # TODO: remove this hardcode nullification of one of the actuators, see TODO
+    # above
     τₖ = vcat(0., uₖ)
     ẋₖ = similar(xₖ)
     dynamics!(ẋₖ, dynamicsresult, mechanismstate, xₖ, τₖ)
@@ -280,6 +310,16 @@ struct HermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
 end
 outputtype(::HermiteSimpsonConstraint) = VectorOutput()
 outputdim(con::HermiteSimpsonConstraint) = num_positions(con.mechanism) + num_velocities(con.mechanism)
+# TODO: remove this function
+function (con::HermiteSimpsonConstraint)(zₖ::SubArray, zₖ₊₁::SubArray)
+    num_controls = 1
+    xₖ = zₖ[1:outputdim(con)]
+    uₖ = [zₖ[outputdim(con)+1]]
+    xₖ₊₁ = zₖ₊₁[1:outputdim(con)]
+    uₖ₊₁ = [zₖ₊₁[outputdim(con)+1]]
+    Δt = 1.0
+    hermite_simpson_compressed(con.mechanism, Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
+end
 function (con::HermiteSimpsonConstraint)(zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
     xₖ = state(zₖ)
     uₖ = control(zₖ)
@@ -470,8 +510,8 @@ function solve!(solver::SQP, problem::Problem)
         ▽f_vstacked = gradient(objectives(problem), knotpoints(problem))
         println("▽f_vstacked: ", Matrix(▽f_vstacked))
 
-#        Jh = jacobian(equality_constraints(problem), knotpoints(problem))
-#        println("Jh: ", Jh)
+        Jh = jacobian(equality_constraints(problem), knotpoints(problem))
+        println("Jh: ", Jh)
 
         Jg = jacobian(inequality_constraints(problem), knotpoints(problem))
         println("Jg: ", Matrix(Jg))
@@ -542,8 +582,8 @@ function fj(method::Symbol = :sqp)
     ]
     equality_constraints = [
         HermiteSimpsonConstraint(mechanism, 1:N-1),
-        StateEqualityConstraint(x0, 1:1),
-        StateEqualityConstraint(xf, N:N),
+#        StateEqualityConstraint(x0, 1:1),
+#        StateEqualityConstraint(xf, N:N),
     ]
 
     knotpoints = initialize_decision_variables(mechanism, tf, Δt, nu)
