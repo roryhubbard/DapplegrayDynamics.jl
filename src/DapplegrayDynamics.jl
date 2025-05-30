@@ -132,41 +132,68 @@ function (func::SingleKnotPointFunction)(z::AbstractKnotPoint)
     u = control(z)
     func(x, u)
 end
-function gradient(func::SingleKnotPointFunction, z::AbstractKnotPoint)
-    ForwardDiff.gradient(func, z)
+function gradient!(▽f::SubArray, func::SingleKnotPointFunction, z::AbstractKnotPoint)
+    ForwardDiff.gradient!(▽f, func, z)
 end
-function jacobian(func::SingleKnotPointFunction, z::AbstractKnotPoint)
-    ForwardDiff.jacobian(func, z)
-end
-function hessian(func::SingleKnotPointFunction, z::AbstractKnotPoint)
-    ForwardDiff.hessian(func, z)
-end
-function gradient!(▽f_row_stacked::AbstractMatrix, func::SingleKnotPointFunction, knotpoints::AbstractVector{<:AbstractKnotPoint})
+function gradient!(▽f_vstacked::SubArray, func::SingleKnotPointFunction, knotpoints::AbstractVector{<:AbstractKnotPoint})
     trajectory_indices = indices(func)
     kdim = length(knotpoints[1])
 
     for (i, idx) in enumerate(trajectory_indices)
-        ▽f = gradient(func, knotpoints[idx])
-        row_idx_start = kdim * idx + 1
-        ▽f_row_stacked[i, row_idx_start:row_idx_start + kdim - 1] = ▽f
+        col₀ = kdim * (idx - 1) + 1
+        row_view = view(▽f_vstacked, i, col₀:col₀ + kdim - 1)
+        gradient!(row_view, func, knotpoints[idx])
     end
-
-    ▽f_row_stacked
 end
 function gradient(funcs::AbstractVector{<:SingleKnotPointFunction}, knotpoints::AbstractVector{<:AbstractKnotPoint})
     kdim = length(knotpoints[1])
     m = sum(length(indices(func)) for func in funcs)
     n = kdim * length(knotpoints)
-    ▽f_row_stacked = zeros(Float64, m, n)
+    ▽f_vstacked = zeros(Float64, m, n)
 
     current_row_idx = 1
     for func ∈ funcs
-        ▽f_block_rows = length(indices(func))
-        gradient!(▽f_row_stacked[current_row_idx:▽f_block_rows, :], func, knotpoints)
-        current_row_idx += ▽f_block_rows
+        band_height = length(indices(func))
+        band_view = view(▽f_vstacked, current_row_idx:band_height, :)
+        gradient!(band_view, func, knotpoints)
+        current_row_idx += band_height + 1
     end
 
-    sparse(▽f_row_stacked)
+    sparse(▽f_vstacked)
+end
+function jacobian!(J::SubArray, func::SingleKnotPointFunction, z::AbstractKnotPoint)
+    ForwardDiff.jacobian!(J, func, z)
+end
+function jacobian!(J_vstacked::SubArray, func::SingleKnotPointFunction, knotpoints::AbstractVector{<:AbstractKnotPoint})
+    trajectory_indices = indices(func)
+    kdim = length(knotpoints[1])
+    Jheight = outputdim(func)
+
+    for (i, idx) in enumerate(trajectory_indices)
+        row₀ = (i - 1) * Jheight + 1
+        col₀ = kdim * idx + 1
+        band_view = view(J_vstacked, row₀:row₀ + Jheight - 1, col₀:col₀ + kdim - 1)
+        jacobian!(band_view, func, knotpoints[idx])
+    end
+end
+function jacobian(funcs::AbstractVector{<:SingleKnotPointFunction}, knotpoints::AbstractVector{<:AbstractKnotPoint})
+    kdim = length(knotpoints[1])
+    m = sum(length(indices(func)) * outputdim(func) for func in funcs)
+    n = kdim * length(knotpoints)
+    J_vstacked = zeros(Float64, m, n)
+
+    current_row_idx = 1
+    for func ∈ funcs
+        band_height = length(indices(func)) * outputdim(func)
+        band_view = view(J_vstacked, current_row_idx:band_height, :)
+        jacobian!(band_view, func, knotpoints)
+        current_row_idx += band_height
+    end
+
+    sparse(J_vstacked)
+end
+function hessian(func::SingleKnotPointFunction, z::AbstractKnotPoint)
+    ForwardDiff.hessian(func, z)
 end
 
 abstract type StateFunction <: SingleKnotPointFunction end
@@ -272,12 +299,21 @@ struct ControlBound{T} <: ControlFunction
                           idx::UnitRange{Int}) where {T}
         if isnothing(upperbound) && isnothing(lowerbound)
             throw(ArgumentError("At least one of upperbound or lowerbound must be provided."))
+        elseif length(upperbound) != length(lowerbound)
+            throw(ArgumentError("Bounds must have equal length (got upperbound length = $(length(upperbound)), lowerbound length = $(length(lowerbound)))"))
         end
         new{T}(upperbound, lowerbound, idx)
     end
 end
 outputtype(::ControlBound) = VectorOutput()
-outputdim(con::ControlBound) = isnothing(con.upperbound) ? length(con.lowerbound) : length(con.upperbound)
+function outputdim(con::ControlBound)
+    if isnothing(con.upperbound)
+        return length(con.lowerbound)
+    elseif isnothing(con.lowerbound)
+        return length(con.upperbound)
+    end
+    return length(con.upperbound) + length(con.lowerbound)
+end
 function (con::ControlBound)(::Union{AbstractVector, Nothing}, u::AbstractVector)
     ub = con.upperbound
     lb = con.lowerbound
@@ -431,10 +467,14 @@ function solve!(solver::SQP, problem::Problem)
         gₖ = evaluate_constraints(inequality_constraints(problem), knotpoints(problem))
         println("gₖ: ", hₖ)
 
-        ▽f_row_stacked = gradient(objectives(problem), knotpoints(problem))
-        println("▽f_row_stacked: ", ▽f_row_stacked)
-#        Jₕ = gradient(equality_constraints(problem), knotpoints(problem))
-#        Jg = gradient(equality_constraints(problem), knotpoints(problem))
+        ▽f_vstacked = gradient(objectives(problem), knotpoints(problem))
+        println("▽f_vstacked: ", Matrix(▽f_vstacked))
+
+#        Jh = jacobian(equality_constraints(problem), knotpoints(problem))
+#        println("Jh: ", Jh)
+
+        Jg = jacobian(inequality_constraints(problem), knotpoints(problem))
+        println("Jg: ", Matrix(Jg))
 
 #        ℒ = build_lagrangian(𝒇, 𝒉, 𝒈, 𝒗, 𝝀)
 #        ▽ₓ𝒇 = gradient(𝒇)
