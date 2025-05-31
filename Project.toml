@@ -4,24 +4,20 @@ authors = ["Rory Hubbard <calvin3h@gmail.com> and contributors"]
 version = "1.0.0-DEV"
 
 [deps]
-Altro = "5dcf52e5-e2fb-48e0-b826-96f46d2e3e73"
 Clarabel = "61c947e1-3e6d-4ee4-985a-eec8c727bd6e"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-RobotDynamics = "38ceca67-d8d3-44e8-9852-78a5596522e1"
-RobotZoo = "74be38bb-dcc2-4b9e-baf3-d6373cd95f10"
+RigidBodyDynamics = "366cf18f-59d5-5db9-a4de-86a9f6786172"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
-TrajectoryOptimization = "c79d492b-0548-5874-b488-5a62c1d9d0ca"
 
 [compat]
-Altro = "0.5"
-Clarabel = "0.10, 0.11"
+Clarabel = "0.11.0"
 ForwardDiff = "0.10, 1"
 LinearAlgebra = "1.11"
-RobotDynamics = "0.4"
-RobotZoo = "0.3"
+RigidBodyDynamics = "2.5.0"
+SparseArrays = "1.11.0"
 StaticArrays = "1.9"
-TrajectoryOptimization = "0.7"
 julia = "1.11"
 
 [extras]
