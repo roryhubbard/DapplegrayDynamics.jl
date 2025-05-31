@@ -7,7 +7,7 @@ using RigidBodyDynamics
 using SparseArrays
 using StaticArrays
 
-export fj, doublependulum
+export df, doublependulum
 
 include("knotpoint.jl")
 
@@ -556,7 +556,7 @@ function solve!(solver::SQP, problem::Problem)
     end
 end
 
-function fj(method::Symbol = :sqp)
+function df(method::Symbol = :sqp)
     mechanism = doublependulum()
     nx = num_positions(mechanism) + num_velocities(mechanism)
     nu = 1 # control dimension
