@@ -9,7 +9,7 @@ struct ConicConstraint{T} <: AdjacentKnotPointsConstraint
     outputdim::Int
 end
 cone(::ConicConstraint) = error("cone not defined")
-function (con::ConicConstraint)(z::AbstractVector, _)
+function (con::ConicConstraint{T})(z::AbstractVector{T}) where {T}
     A * z - b
 end
 
@@ -43,7 +43,7 @@ function control_bound_constraint(
 end
 
 function state_equality_constraint(
-    xd::AbstractVector
+    xd::AbstractVector{T}
     knotpointsize::Int,
     idx::UnitRange{Int},
 )::ConicConstraint{T} where {T}
@@ -104,22 +104,18 @@ function hermite_simpson_compressed(mechanism::Mechanism, Δt::Real, xₖ::Abstr
     # equality constraint: xₖ₊₁ - xₖ = (Δt / 6) * (fₖ + 4fcol + fₖ₊₁)
     xₖ₊₁ - xₖ - Δt / 6 * (ẋₖ + 4 * ẋₘ + ẋₖ₊₁)
 end
+
 struct HermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
     mechanism::Mechanism{T}
     idx::UnitRange{Int}
+    nknots::Int
+    outputdim::Int
+    function HermiteSimpsonConstraint(mechanism::Mechanism{T}, idx::UnitRange{Int}) where {T}
+        outputdim = num_positions(mechanism) + num_velocities(mechanism)
+        new{T}(mechanism, idx, 2, outputdim)
+    end
 end
-outputdim(con::HermiteSimpsonConstraint) = num_positions(con.mechanism) + num_velocities(con.mechanism)
-# TODO: remove this function
-function (con::HermiteSimpsonConstraint)(zₖ::SubArray, zₖ₊₁::SubArray)
-    num_controls = 1
-    xₖ = zₖ[1:outputdim(con)]
-    uₖ = [zₖ[outputdim(con)+1]]
-    xₖ₊₁ = zₖ₊₁[1:outputdim(con)]
-    uₖ₊₁ = [zₖ₊₁[outputdim(con)+1]]
-    Δt = 1.0
-    hermite_simpson_compressed(con.mechanism, Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
-end
-function (con::HermiteSimpsonConstraint)(zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
+function (con::HermiteSimpsonConstraint)(z::AbstractVector)
     xₖ = state(zₖ)
     uₖ = control(zₖ)
     xₖ₊₁ = state(zₖ₊₁)

@@ -1,30 +1,46 @@
 struct DiscreteTrajectory{T}
-    timesec::AbstractVector{T}
+    time::AbstractVector{T}
+    timesteps::AbstractVector{T}
     knotpoints::AbstractVector{T}
     knotpointsize::Int
     nstates::Int
+    function(time::AbstractVector{T}, timesteps::AbstractVector{T}, knotpoints::AbstractVector{T}, knotpointsize::Int, nstates::Int) where {T}
+        @assert length(time) == length(timestemp) == length(knotpoints) / knotpointsize  "length(time) == length(timesteps) == length(knotpoints) / knotpointsize must hold true"
+        new{T}(time, timesteps, knotpoints, knotpointsize, nstates)
+    end
 end
-knotpointsize(trajectory::DiscreteTrajectory) = trajectory.knotpointsize
-nstates(trajectory::DiscreteTrajectory) = trajectory.nstates
 
-function initialize_trajectory(mechanism::Mechanism, tf::Real, Δt::Real, nu::Int)
-    ts, qs, vs = simulate_mechanism(mechanism, tf, Δt, [0.0, 0.0], [0.0, 0.0])
+time(traj::DiscreteTrajectory{T}) where {T} = traj.time
+timesteps(traj::DiscreteTrajectory{T}) where {T} = traj.timesteps
+knotpoints(traj::DiscreteTrajectory{T}) where {T} = traj.knotpoints
+function knotpoints(traj::DiscreteTrajectory{T}, idx::UnitRange{Int}) where {T}
+    idx₀ = (idx[1] - 1) * knotpointsize(traj) + 1
+    idx₁ = (idx[end] - 1) * knotpointsize(traj) - 1
+    knotpoints[idx₀:idx₁]
+end
+knotpointsize(traj::DiscreteTrajectory{T}) where {T} = traj.knotpointsize
+nstates(traj::DiscreteTrajectory{T}) where {T} = traj.nstates
+
+function initialize_trajectory(mechanism::Mechanism{T}, tf::T, Δt::T, nu::Int) where {T}
+    ts, qs, vs = simulate_mechanism(mechanism, tf, Δt, zeros(T, 2), zeros(T, 2))
 
     N  = length(ts)
     nx = num_positions(con.mechanism) + num_velocities(con.mechanism)
-    knotpoint_size = nx + nu
-    num_decision_variables = N * knotpoint_size
+    knotpointsize = nx + nu
+    num_decision_variables = N * knotpointsize
     zero_control_vector = zeros(nu)
 
-    knotpoints = Vector{Float64}(undef, N)
+    timesteps = Vector{T}(Δt, N)
+    knotpoints = Vector{T}(undef, num_decision_variables)
 
     for i in 1:N
-        idx₀ = (i - 1) * knotpoint_size + 1
+        idx₀ = (i - 1) * knotpointsize + 1
+        idx₁ = idx₀ + knotpointsize - 1
         knotpoint  = [qs[i]; vs[i]; zero_control_vector]
-        knotpoints[idx₀:idx₀ + knotpoint_size - 1] = knotpoint
+        knotpoints[idx₀:idx₁] = knotpoint
     end
 
-    DiscreteTrajectory(ts, knotpoints, knotpointsize)
+    DiscreteTrajectory(ts, timesteps, knotpoints, knotpointsize, nx)
 end
 
 function num_lagrange_multipliers(constraints::AbstractVector{<:AdjacentKnotPointsFunction})
@@ -36,7 +52,7 @@ function num_lagrange_multipliers(constraints::AbstractVector{<:AdjacentKnotPoin
 end
 
 struct Problem{T}
-    mechanism::Mechanism
+    mechanism::Mechanism{T}
     objectives::AbstractVector{<:AdjacentKnotPointsFunction}
     equality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
     inequality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
@@ -55,7 +71,7 @@ function knotpoints(problem::Problem)
     problem.knotpoints
 end
 
-function evaluate_objective(objectives::AbstractVector{<:AdjacentKnotPointsFunction}, knotpoints::DiscreteTrajectory)
+function evaluate_objective(objectives::AbstractVector{<:AdjacentKnotPointsFunction}, knotpoints::DiscreteTrajectory{T}) where {T}
     result = 0.0
     for objective ∈ objectives
         result += objective(::Sum, knotpoints)
@@ -63,9 +79,9 @@ function evaluate_objective(objectives::AbstractVector{<:AdjacentKnotPointsFunct
     result
 end
 
-function evaluate_constraints(constraints::AbstractVector{<:AdjacentKnotPointsFunction}, knotpoints::DiscreteTrajectory)
+function evaluate_constraints(constraints::AbstractVector{<:AdjacentKnotPointsFunction}, knotpoints::DiscreteTrajectory{T}) where {T}
     # TODO: preallocate before here
-    result = Vector{Float64}()
+    result = Vector{T}()
     for constraint in constraints
         val = constraint(::Concatenate, knotpoints)
         append!(result, val)
@@ -73,10 +89,10 @@ function evaluate_constraints(constraints::AbstractVector{<:AdjacentKnotPointsFu
     return result
 end
 
-struct SQP
+struct SQP{T}
 end
 
-function solve!(solver::SQP, problem::Problem)
+function solve!(solver::SQP{T}, problem::Problem{T}) where {T}
     v = zeros(num_lagrange_multipliers(equality_constraints(problem)))
     println("v: ", v)
 
