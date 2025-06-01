@@ -11,35 +11,50 @@ struct DiscreteTrajectory{T}
     end
 end
 
-time(traj::DiscreteTrajectory{T}) where {T} = traj.time
-timesteps(traj::DiscreteTrajectory{T}) where {T} = traj.timesteps
-knotpoints(traj::DiscreteTrajectory{T}) where {T} = traj.knotpoints
-function knotpoints(traj::DiscreteTrajectory{T}, idx::UnitRange{Int}; view::Bool=true) where {T}
-    ksize = knotpointsize(traj)
+time(trajectory::DiscreteTrajectory{T}) where {T} = trajectory.time
+
+timesteps(trajectory::DiscreteTrajectory{T}) where {T} = trajectory.timesteps
+
+knotpoints(trajectory::DiscreteTrajectory{T}) where {T} = trajectory.knotpoints
+function knotpoints(trajectory::DiscreteTrajectory{T}, idx::UnitRange{Int}; useview::Bool=true) where {T}
+    irange = knotpointindices(trajectory, idx)
+    return useview ? view(knotpoints(trajectory), irange) : knotpoints(trajectory)[irange]
+end
+
+function knotpointindices(trajectory::DiscreteTrajectory{T}, idx::UnitRange{Int}) where {T}
+    ksize = knotpointsize(trajectory)
     idx₀ = (first(idx) - 1) * ksize + 1
     idx₁ = last(idx) * ksize
-    return view ? view(knotpoints(traj), idx₀:idx₁) : knotpoints(traj)[idx₀:idx₁]
+    idx₀:idx₁
 end
-knotpointsize(traj::DiscreteTrajectory{T}) where {T} = traj.knotpointsize
-nstates(traj::DiscreteTrajectory{T}) where {T} = traj.nstates
-function Base.getindex(traj::DiscreteTrajectory{T}, idx::UnitRange{Int}) where {T}
+knotpointindices(trajectory::DiscreteTrajectory{T}, idx::Int) where {T} = knotpointindices(trajectory, idx:idx)
+
+knotpointsize(trajectory::DiscreteTrajectory{T}) where {T} = trajectory.knotpointsize
+
+nstates(trajectory::DiscreteTrajectory{T}) where {T} = trajectory.nstates
+
+function Base.getindex(trajectory::DiscreteTrajectory{T}, idx::UnitRange{Int}) where {T}
     return DiscreteTrajectory(
-        time(traj)[idx],
-        timesteps(traj)[idx],
-        knotpoints(traj, idx, view=false),
-        knotpointsize(traj),
-        nstates(traj)
+        time(trajectory)[idx],
+        timesteps(trajectory)[idx],
+        knotpoints(trajectory, idx, useview=false),
+        knotpointsize(trajectory),
+        nstates(trajectory)
     )
 end
-function Base.view(traj::DiscreteTrajectory{T}, idx::UnitRange{Int}) where {T}
+
+function Base.view(trajectory::DiscreteTrajectory{T}, idx::UnitRange{Int}) where {T}
     return DiscreteTrajectory(
-        view(time(traj), idx),
-        view(timesteps(traj), idx),
-        view(knotpoints(traj, idx), view=true),
-        knotpointsize(traj),
-        nstates(traj)
+        view(time(trajectory), idx),
+        view(timesteps(trajectory), idx),
+        view(knotpoints(trajectory, idx), useview=true),
+        knotpointsize(trajectory),
+        nstates(trajectory)
     )
 end
+
+Base.getindex(traj::DiscreteTrajectory{T}, idx::Int) where {T} = traj[idx:idx]
+Base.view(traj::DiscreteTrajectory{T}, idx::Int) where {T} = view(traj, idx:idx)
 
 function initialize_trajectory(mechanism::Mechanism{T}, tf::T, Δt::T, nu::Int) where {T}
     ts, qs, vs = simulate_mechanism(mechanism, tf, Δt, zeros(T, 2), zeros(T, 2))
@@ -76,7 +91,7 @@ struct Problem{T}
     objectives::AbstractVector{<:AdjacentKnotPointsFunction}
     equality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
     inequality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
-    knotpoint_trajectory::DiscreteTrajectory{T}
+    trajectory::DiscreteTrajectory{T}
 end
 function objectives(problem::Problem)
     problem.objectives
@@ -87,23 +102,23 @@ end
 function inequality_constraints(problem::Problem)
     problem.inequality_constraints
 end
-function knotpoints(problem::Problem)
-    problem.knotpoints
+function trajectory(problem::Problem)
+    problem.trajectory
 end
 
-function evaluate_objective(objectives::AbstractVector{<:AdjacentKnotPointsFunction}, knotpoints::DiscreteTrajectory{T}) where {T}
+function evaluate_objective(objectives::AbstractVector{<:AdjacentKnotPointsFunction}, trajectory::DiscreteTrajectory{T}) where {T}
     result = 0.0
     for objective ∈ objectives
-        result += objective(::Sum, knotpoints)
+        result += objective(::Sum, trajectory)
     end
     result
 end
 
-function evaluate_constraints(constraints::AbstractVector{<:AdjacentKnotPointsFunction}, knotpoints::DiscreteTrajectory{T}) where {T}
+function evaluate_constraints(constraints::AbstractVector{<:AdjacentKnotPointsFunction}, trajectory::DiscreteTrajectory{T}) where {T}
     # TODO: preallocate before here
     result = Vector{T}()
     for constraint in constraints
-        val = constraint(::Concatenate, knotpoints)
+        val = constraint(::Concatenate, trajectory)
         append!(result, val)
     end
     return result
@@ -120,22 +135,22 @@ function solve!(solver::SQP{T}, problem::Problem{T}) where {T}
     println("λ: ", λ)
 
     for k = 1:1 # TODO: repeat until convergence criteria is met
-        fₖ = evaluate_objective(objectives(problem), knotpoints(problem))
+        fₖ = evaluate_objective(objectives(problem), trajectory(problem))
         println("fₖ: ", fₖ)
 
-        hₖ = evaluate_constraints(equality_constraints(problem), knotpoints(problem))
+        hₖ = evaluate_constraints(equality_constraints(problem), trajectory(problem))
         println("hₖ: ", hₖ)
 
-        gₖ = evaluate_constraints(inequality_constraints(problem), knotpoints(problem))
+        gₖ = evaluate_constraints(inequality_constraints(problem), trajectory(problem))
         println("gₖ: ", hₖ)
 
-        ▽f_vstacked = gradient(objectives(problem), knotpoints(problem))
+        ▽f_vstacked = gradient(objectives(problem), trajectory(problem))
         println("▽f_vstacked: ", Matrix(▽f_vstacked))
 
-        Jh = jacobian(equality_constraints(problem), knotpoints(problem))
+        Jh = jacobian(equality_constraints(problem), trajectory(problem))
         println("Jh: ", Jh)
 
-        Jg = jacobian(inequality_constraints(problem), knotpoints(problem))
+        Jg = jacobian(inequality_constraints(problem), trajectory(problem))
         println("Jg: ", Matrix(Jg))
 
 #        ℒ = build_lagrangian(𝒇, 𝒉, 𝒈, 𝒗, 𝝀)

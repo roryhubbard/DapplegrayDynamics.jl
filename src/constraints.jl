@@ -9,8 +9,10 @@ struct ConicConstraint{T} <: AdjacentKnotPointsConstraint
     outputdim::Int
 end
 cone(::ConicConstraint) = error("cone not defined")
-function (con::ConicConstraint{T})(z::AbstractVector{T}) where {T}
-    A * z - b
+function (con::ConicConstraint{T})(z::DiscreteTrajectory{T}) where {T}
+    x = knotpoints(z)
+    @assert length(x) == knotpointsize(z) * nknots(con) "ConicConstraint expected knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(x))"
+    A * x - b
 end
 
 function control_bound_constraint(
@@ -115,11 +117,17 @@ struct HermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
         new{T}(mechanism, idx, 2, outputdim)
     end
 end
-function (con::HermiteSimpsonConstraint)(z::AbstractVector)
+function (con::HermiteSimpsonConstraint)(z::DiscreteTrajectory{T}) where {T}
     xₖ = state(zₖ)
     uₖ = control(zₖ)
     xₖ₊₁ = state(zₖ₊₁)
     uₖ₊₁ = control(zₖ₊₁)
-    Δt = timestep(zₖ)
+
+    k = knotpoints(z)
+    nx = nstates(z)
+    x = @view k[1:nx]
+    u = @view k[nx+1:end]
+    Δt = timesteps(zₖ)
+    @assert length(x) == knotpointsize(z) * nknots(con) "ConicConstraint expected knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(x))"
     hermite_simpson_compressed(con.mechanism, Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
 end
