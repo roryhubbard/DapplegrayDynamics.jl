@@ -5,8 +5,9 @@ struct ConicConstraint{T} <: AdjacentKnotPointsConstraint
     A::AbstractMatrix{T}
     b::AbstractVector{T}
     cone::Clarabel.SupportedCone
-    functioninputs::FunctionInputs
     idx::UnitRange{Int}
+    nknots::Int
+    outputdim::Int
 end
 cone(::ConicConstraint) = error("cone not defined")
 function (con::ConicConstraint)(z::AbstractVector)
@@ -17,12 +18,14 @@ function control_bound_constraint(
     upperbound::Union{AbstractVector{T}, Nothing},
     lowerbound::Union{AbstractVector{T}, Nothing},
     idx::UnitRange{Int}) where {T}
-)
+)::ConicConstraint{T}
     if isnothing(upperbound) && isnothing(lowerbound)
         throw(ArgumentError("At least one of upperbound or lowerbound must be provided."))
     elseif length(upperbound) != length(lowerbound)
         throw(ArgumentError("Bounds must have equal length (got upperbound length = $(length(upperbound)), lowerbound length = $(length(lowerbound)))"))
     end
+    A =
+    ConicConstraint(A, b, Clarabel.NonnegativeCone(), idx)
 end
 
 struct ControlBound{T} <: ConicConstraint

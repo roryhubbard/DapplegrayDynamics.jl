@@ -1,51 +1,58 @@
-abstract type FunctionOutput end
-struct ScalarOutput <: FunctionOutput end
-struct VectorOutput <: FunctionOutput end
-
 abstract type AdjacentKnotPointsFunction end
 indices(func::AdjacentKnotPointsFunction) = func.idx
-nknots(::AdjacentKnotPointsFunction) = error("nknots not defined")
-outputtype(::AdjacentKnotPointsFunction) = error("outputtype not defined")
-outputdim() = error("outputdim not defined")
+nknots(func::AdjacentKnotPointsFunction) = func.nknots
+outputdim(func::AdjacentKnotPointsFunction) = func.outputdim
 (::AdjacentKnotPointsFunction)(::AbstractVector) = error("call on knotpoint(s) not implemented")
 
-function (func::AdjacentKnotPointsFunction)(::ScalarOutput, Z::DiscreteTrajectory)
+abstract type ResultAccumulationMethod end
+struct Sum <: ResultAccumulationMethod end
+struct Concatenate <: ResultAccumulationMethod end
+
+function (func::AdjacentKnotPointsFunction)(::Sum, Z::DiscreteTrajectory)
     result = 0.0
     for i ∈ indices(func)
-        result += func(Z[i:i + knotpointsize(Z)])
+        idx₀ = (i - 1) * knotpointsize(Z) + 1
+        slice_length = nknots(func) * knotpointsize(Z)
+        result += func(Z[idx₀:idx₀ + slice_length - 1], nstates(Z))
     end
     result
 end
-function (func::AdjacentKnotPointsFunction)(::VectorOutput, Z::DiscreteTrajectory)
-    vcat(map(idx -> func(Z[idx:i + knotpointsize(Z)]), indices(func))...)
+function (func::AdjacentKnotPointsFunction)(::Concatenate, Z::DiscreteTrajectory)
+    outputs = map(indices(func)) do i
+        idx₀ = (i - 1) * knotpointsize(Z) + 1
+        slice_length = nknots(func) * knotpointsize(Z)
+        z = @view Z[idx₀:idx₀ + slice_length - 1]
+        func(z, nstates(Z))
+    end
+    vcat(outputs...)
 end
-(func::AdjacentKnotPointsFunction)(Z::DiscreteTrajectory) = func(outputtype(func), Z)
-function gradient(func::AdjacentKnotPointsFunction, z::AbstractVector)
-    ForwardDiff.gradient(func, z)
+function gradient(func::AdjacentKnotPointsFunction, z::AbstractVector, nstates::Int)
+    fwrapped(z) = func(z, nstates)
+    ForwardDiff.gradient(fwrapped, z)
 end
-function jacobian!(J::SubArray, func::AdjacentKnotPointsFunction, zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
-    z = [getdata(zₖ); getdata(zₖ₊₁)]
-    nₖ = length(zₖ)
-    func_stacked_knots(z) = func(view(z, 1:nₖ), view(z, nₖ+1:length(z)))
-    ForwardDiff.jacobian!(J, func_stacked_knots, z)
+function jacobian!(J::SubArray, func::AdjacentKnotPointsFunction, z::AbstractVector, nstates::Int)
+    fwrapped(z) = func(z, nstates)
+    ForwardDiff.jacobian!(J, fwrapped, z)
 end
-function jacobian!(J_vstacked::SubArray, func::AdjacentKnotPointsFunction, knotpoints::AbstractVector{<:AbstractKnotPoint})
-    trajectory_indices = indices(func)
-    kdim = 2 * length(knotpoints[1])
+function jacobian!(J_vstacked::SubArray, func::AdjacentKnotPointsFunction, Z::DiscreteTrajectory)
+    Zindices = indices(func)
+    slice_length = nknots(func) * knotpointsize(Z)
+    nstates = nstates(Z)
     Jheight = outputdim(func)
 
-    for (i, idx) in enumerate(trajectory_indices)
+    for (i, idx) in enumerate(Zindices)
         row₀ = (i - 1) * Jheight + 1
         col₀ = kdim * (idx - 1) + 1
-        band_view = view(J_vstacked, row₀:row₀ + Jheight - 1, col₀:col₀ + kdim - 1)
-        jacobian!(band_view, func, knotpoints[idx], knotpoints[idx+1])
+        band_view = view(J_vstacked, row₀:row₀ + Jheight - 1, col₀:col₀ + slice_length - 1)
+        z = view(Z[col₀:col₀ + slice_length - 1])
+        jacobian!(band_view, func, z, nstates)
     end
 end
-function jacobian(funcs::AbstractVector{<:AdjacentKnotPointsFunction}, knotpoints::AbstractVector{<:AbstractKnotPoint})
-    kdim = length(knotpoints[1])
+function jacobian(funcs::AbstractVector{<:AdjacentKnotPointsFunction}, Z::DiscreteTrajectory) where {T}
+    ksize = knotpointsize(Z)
     m = sum(length(indices(func)) * outputdim(func) for func in funcs)
-    n = kdim * length(knotpoints)
-    J_vstacked = zeros(Float64, m, n)
+    n = length(knotpoints(Z))
+    J_vstacked = zeros(T, m, n)
 
     current_row_idx = 1
     for func ∈ funcs
@@ -57,9 +64,7 @@ function jacobian(funcs::AbstractVector{<:AdjacentKnotPointsFunction}, knotpoint
 
     sparse(J_vstacked)
 end
-function hessian(func::AdjacentKnotPointsFunction, zₖ::AbstractKnotPoint, zₖ₊₁::AbstractKnotPoint)
-    z = [zₖ; zₖ₊₁]
-    nₖ = length(zₖ)
-    func_stacked_knots(z) = func(z[1:nₖ], z[nₖ+1:end])
-    ForwardDiff.hessian(func_stacked_knots, z)
+function hessian(func::AdjacentKnotPointsFunction, z::AbstractVector, nstates::Int)
+    fwrapped(z) = func(z, nstates)
+    ForwardDiff.hessian(fwrapped, z)
 end

@@ -21,13 +21,13 @@ function initialize_trajectory(mechanism::Mechanism, tf::Real, Δt::Real, nu::In
     for i in 1:N
         idx₀ = (i - 1) * knotpoint_size + 1
         knotpoint  = [qs[i]; vs[i]; zero_control_vector]
-        knotpoints[idx₀:idx₀ + knotpoint_size] = knotpoint 
+        knotpoints[idx₀:idx₀ + knotpoint_size - 1] = knotpoint
     end
 
     DiscreteTrajectory(ts, knotpoints, knotpointsize)
 end
 
-function num_lagrange_multipliers(constraints::AbstractVector{<:AbstractKnotPointsFunction})
+function num_lagrange_multipliers(constraints::AbstractVector{<:AdjacentKnotPointsFunction})
     result = 0
     for constraint ∈ constraints
         result += outputdim(constraint) * length(indices(constraint))
@@ -37,9 +37,9 @@ end
 
 struct Problem{T}
     mechanism::Mechanism
-    objectives::AbstractVector{<:AbstractKnotPointsFunction}
-    equality_constraints::AbstractVector{<:AbstractKnotPointsFunction}
-    inequality_constraints::AbstractVector{<:AbstractKnotPointsFunction}
+    objectives::AbstractVector{<:AdjacentKnotPointsFunction}
+    equality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
+    inequality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
     knotpoint_trajectory::DiscreteTrajectory{T}
 end
 function objectives(problem::Problem)
@@ -55,29 +55,21 @@ function knotpoints(problem::Problem)
     problem.knotpoints
 end
 
-function evaluate_objective(objectives::AbstractVector{<:AbstractKnotPointsFunction}, knotpoints::AbstractVector{<:AbstractKnotPoint})
+function evaluate_objective(objectives::AbstractVector{<:AdjacentKnotPointsFunction}, knotpoints::DiscreteTrajectory)
     result = 0.0
     for objective ∈ objectives
-        result += objective(outputtype(objective), knotpoints)
+        result += objective(::Sum, knotpoints)
     end
     result
 end
 
-function evaluate_constraints(constraints::AbstractVector{<:AbstractKnotPointsFunction}, knotpoints::AbstractVector{<:AbstractKnotPoint})
+function evaluate_constraints(constraints::AbstractVector{<:AdjacentKnotPointsFunction}, knotpoints::DiscreteTrajectory)
+    # TODO: preallocate before here
     result = Vector{Float64}()
-
     for constraint in constraints
-        val = constraint(outputtype(constraint), knotpoints)
-
-        if outputtype(constraint) isa ScalarOutput
-            push!(result, val)  # scalar → 1-element appended
-        elseif outputtype(constraint) isa VectorOutput
-            append!(result, val)  # append all vector elements
-        else
-            error("Unknown output type")
-        end
+        val = constraint(::Concatenate, knotpoints)
+        append!(result, val)
     end
-
     return result
 end
 
