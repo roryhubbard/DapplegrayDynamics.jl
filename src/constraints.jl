@@ -1,8 +1,7 @@
 abstract type AdjacentKnotPointsConstraint <: AdjacentKnotPointsFunction end
-abstract type AbstractConicConstraint <: AdjacentKnotPointsConstraint end
 
 struct ConicConstraint{T} <: AdjacentKnotPointsConstraint
-    A::SparseMatrixCSC{T}
+    A::SparseMatrixCSC{T, Int}
     b::AbstractVector{T}
     cone::Clarabel.SupportedCone
     idx::UnitRange{Int}
@@ -18,8 +17,8 @@ function control_bound_constraint(
     upperbound::Union{AbstractVector{T}, Nothing},
     lowerbound::Union{AbstractVector{T}, Nothing},
     knotpointsize::Int,
-    idx::UnitRange{Int}) where {T}
-)::ConicConstraint{T}
+    idx::UnitRange{Int},
+)::ConicConstraint{T} where {T}
     if isnothing(upperbound) && isnothing(lowerbound)
         throw(ArgumentError("At least one of upperbound or lowerbound must be provided."))
     elseif length(upperbound) != length(lowerbound)
@@ -30,26 +29,29 @@ function control_bound_constraint(
         outputdim = length(con.lowerbound)
         A = spzeros(outputdim, knotpointsize)
         col₀ = knotpointsize - outputdim + 1
-        A[:, col₀:end] .= -1
+        A[:, col₀:end] .= -I(outputdim)
         b = -lb
     elseif isnothing(con.lowerbound)
         outputdim = length(con.upperbound)
         A = spzeros(outputdim, knotpointsize)
         col₀ = knotpointsize - outputdim + 1
-        A[:, col₀:end] .= 1
+        A[:, col₀:end] .= I(outputdim)
         b = ub
     end
 
-    ConicConstraint(A, b, Clarabel.NonnegativeCone(), idx, 1, outputdim)
+    ConicConstraint(A, b, Clarabel.NonnegativeCone(outputdim), idx, 1, outputdim)
 end
 
-struct StateEqualityConstraint <: StateFunction
+function state_equality_constraint(
     xd::AbstractVector
-    idx::UnitRange{Int}
-end
-outputdim(con::StateEqualityConstraint) = length(con.xd)
-function (con::StateEqualityConstraint)(x::AbstractVector, _)
-    x - con.xd
+    knotpointsize::Int,
+    idx::UnitRange{Int},
+)::ConicConstraint{T} where {T}
+    outputdim = length(xd)
+    A = spzeros(outputdim, knotpointsize)
+    A[:, 1:outputdim] .= I(outputdim)
+    b = zeros(outputdim)
+    ConicConstraint(A, b, Clarabel.ZeroConeT(outputdim), idx, 1, outputdim)
 end
 
 # TODO: dynamics! assumes fully actuated systems, figure out a method for
