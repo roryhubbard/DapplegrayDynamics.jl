@@ -2,7 +2,7 @@ abstract type AdjacentKnotPointsConstraint <: AdjacentKnotPointsFunction end
 abstract type AbstractConicConstraint <: AdjacentKnotPointsConstraint end
 
 struct ConicConstraint{T} <: AdjacentKnotPointsConstraint
-    A::AbstractMatrix{T}
+    A::SparseMatrixCSC{T}
     b::AbstractVector{T}
     cone::Clarabel.SupportedCone
     idx::UnitRange{Int}
@@ -10,13 +10,14 @@ struct ConicConstraint{T} <: AdjacentKnotPointsConstraint
     outputdim::Int
 end
 cone(::ConicConstraint) = error("cone not defined")
-function (con::ConicConstraint)(z::AbstractVector)
+function (con::ConicConstraint)(z::AbstractVector, _)
     A * z - b
 end
 
 function control_bound_constraint(
     upperbound::Union{AbstractVector{T}, Nothing},
     lowerbound::Union{AbstractVector{T}, Nothing},
+    knotpointsize::Int,
     idx::UnitRange{Int}) where {T}
 )::ConicConstraint{T}
     if isnothing(upperbound) && isnothing(lowerbound)
@@ -24,58 +25,32 @@ function control_bound_constraint(
     elseif length(upperbound) != length(lowerbound)
         throw(ArgumentError("Bounds must have equal length (got upperbound length = $(length(upperbound)), lowerbound length = $(length(lowerbound)))"))
     end
-    A =
-    ConicConstraint(A, b, Clarabel.NonnegativeCone(), idx)
-end
 
-struct ControlBound{T} <: ConicConstraint
-    upperbound::Union{AbstractVector{T}, Nothing}
-    lowerbound::Union{AbstractVector{T}, Nothing}
-    idx::UnitRange{Int}
-
-    function ControlBound(upperbound::Union{AbstractVector{T}, Nothing},
-                          lowerbound::Union{AbstractVector{T}, Nothing},
-                          idx::UnitRange{Int}) where {T}
-        if isnothing(upperbound) && isnothing(lowerbound)
-            throw(ArgumentError("At least one of upperbound or lowerbound must be provided."))
-        elseif length(upperbound) != length(lowerbound)
-            throw(ArgumentError("Bounds must have equal length (got upperbound length = $(length(upperbound)), lowerbound length = $(length(lowerbound)))"))
-        end
-        new{T}(upperbound, lowerbound, idx)
-    end
-end
-outputtype(::ControlBound) = VectorOutput()
-cone(con::ConicConstraint) = Clarabel.NonnegativeCone(outputdim(con))
-function outputdim(con::ControlBound)
     if isnothing(con.upperbound)
-        return length(con.lowerbound)
+        outputdim = length(con.lowerbound)
+        A = spzeros(outputdim, knotpointsize)
+        col₀ = knotpointsize - outputdim + 1
+        A[:, col₀:end] = -1
+        b = -lb
     elseif isnothing(con.lowerbound)
-        return length(con.upperbound)
+        outputdim = length(con.upperbound)
+        A = spzeros(outputdim, knotpointsize)
+        col₀ = knotpointsize - outputdim + 1
+        A[:, col₀:end] = 1
+        b = ub
     end
-    return length(con.upperbound) + length(con.lowerbound)
-end
-function (con::ControlBound)(z::AbstractVector)
-    ub = con.upperbound
-    lb = con.lowerbound
-    if isnothing(ub)
-        return lb - u
-    elseif isnothing(lb)
-        return u - ub
-    else
-        return [lb - u; u - ub]
-    end
+
+    ConicConstraint(A, b, Clarabel.NonnegativeCone(), idx, 1, outputdim)
 end
 
 struct StateEqualityConstraint <: StateFunction
     xd::AbstractVector
     idx::UnitRange{Int}
 end
-outputtype(::StateEqualityConstraint) = VectorOutput()
 outputdim(con::StateEqualityConstraint) = length(con.xd)
 function (con::StateEqualityConstraint)(x::AbstractVector, _)
     x - con.xd
 end
-
 
 # TODO: dynamics! assumes fully actuated systems, figure out a method for
 # dealing with control vectors that are smaller in rank than the vector of
@@ -131,7 +106,6 @@ struct HermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
     mechanism::Mechanism{T}
     idx::UnitRange{Int}
 end
-outputtype(::HermiteSimpsonConstraint) = VectorOutput()
 outputdim(con::HermiteSimpsonConstraint) = num_positions(con.mechanism) + num_velocities(con.mechanism)
 # TODO: remove this function
 function (con::HermiteSimpsonConstraint)(zₖ::SubArray, zₖ₊₁::SubArray)

@@ -42,9 +42,11 @@ function jacobian!(J_vstacked::SubArray, func::AdjacentKnotPointsFunction, Z::Di
 
     for (i, idx) in enumerate(Zindices)
         row₀ = (i - 1) * Jheight + 1
+        row₁ = row₀ + Jheight - 1
         col₀ = kdim * (idx - 1) + 1
-        band_view = view(J_vstacked, row₀:row₀ + Jheight - 1, col₀:col₀ + slice_length - 1)
-        z = view(Z[col₀:col₀ + slice_length - 1])
+        col₁ = col₀ + slice_length - 1
+        band_view = view(J_vstacked, row₀:row₁, col₀:col₁)
+        z = view(Z[col₀:col₁])
         jacobian!(band_view, func, z, nstates)
     end
 end
