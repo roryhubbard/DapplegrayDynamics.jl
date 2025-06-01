@@ -30,13 +30,13 @@ function control_bound_constraint(
         outputdim = length(con.lowerbound)
         A = spzeros(outputdim, knotpointsize)
         col₀ = knotpointsize - outputdim + 1
-        A[:, col₀:end] = -1
+        A[:, col₀:end] .= -1
         b = -lb
     elseif isnothing(con.lowerbound)
         outputdim = length(con.upperbound)
         A = spzeros(outputdim, knotpointsize)
         col₀ = knotpointsize - outputdim + 1
-        A[:, col₀:end] = 1
+        A[:, col₀:end] .= 1
         b = ub
     end
 
