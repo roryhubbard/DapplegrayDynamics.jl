@@ -2,9 +2,7 @@ abstract type AdjacentKnotPointsFunction end
 indices(func::AdjacentKnotPointsFunction) = func.idx
 nknots(func::AdjacentKnotPointsFunction) = func.nknots
 outputdim(func::AdjacentKnotPointsFunction) = func.outputdim
-(func::AdjacentKnotPointsFunction)(z::AbstractVector{T}) = error("call on knotpoint(s) not implemented")
-(func::AdjacentKnotPointsFunction)(z::AbstractVector{T}, time::AbstractVector{T}) where {T} = func(z)
-(func::AdjacentKnotPointsFunction)(z::AbstractVector{T}, time::AbstractVector{T}, nstates::Int) where {T} = func(z, time)
+(func::AdjacentKnotPointsFunction)(Z::DiscreteTrajectory{T}) = error("call on knotpoint(s) not implemented")
 
 abstract type ResultAccumulationMethod end
 struct Sum <: ResultAccumulationMethod end
@@ -25,7 +23,7 @@ function (func::AdjacentKnotPointsFunction)(::Concatenate, Z::DiscreteTrajectory
         idx₀ = (i - 1) * knotpointsize(Z) + 1
         slice_length = nknots(func) * knotpointsize(Z)
         z = @view Z[idx₀:idx₀ + slice_length - 1]
-        func(z, nstates(Z))
+        func(z, time(Z), timesteps(Z), nstates(Z))
     end
     vcat(outputs...)
 end

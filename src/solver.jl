@@ -5,7 +5,8 @@ struct DiscreteTrajectory{T}
     knotpointsize::Int
     nstates::Int
     function(time::AbstractVector{T}, timesteps::AbstractVector{T}, knotpoints::AbstractVector{T}, knotpointsize::Int, nstates::Int) where {T}
-        @assert length(time) == length(timestemp) == length(knotpoints) / knotpointsize  "length(time) == length(timesteps) == length(knotpoints) / knotpointsize must hold true"
+        nk = length(knotpoints) ÷ knotpointsize
+        @assert length(time) == length(timesteps) == nk "lengths must match"
         new{T}(time, timesteps, knotpoints, knotpointsize, nstates)
     end
 end
@@ -13,13 +14,32 @@ end
 time(traj::DiscreteTrajectory{T}) where {T} = traj.time
 timesteps(traj::DiscreteTrajectory{T}) where {T} = traj.timesteps
 knotpoints(traj::DiscreteTrajectory{T}) where {T} = traj.knotpoints
-function knotpoints(traj::DiscreteTrajectory{T}, idx::UnitRange{Int}) where {T}
-    idx₀ = (idx[1] - 1) * knotpointsize(traj) + 1
-    idx₁ = (idx[end] - 1) * knotpointsize(traj) - 1
-    knotpoints[idx₀:idx₁]
+function knotpoints(traj::DiscreteTrajectory{T}, idx::UnitRange{Int}; view::Bool=true) where {T}
+    ksize = knotpointsize(traj)
+    idx₀ = (first(idx) - 1) * ksize + 1
+    idx₁ = last(idx) * ksize
+    return view ? view(knotpoints(traj), idx₀:idx₁) : knotpoints(traj)[idx₀:idx₁]
 end
 knotpointsize(traj::DiscreteTrajectory{T}) where {T} = traj.knotpointsize
 nstates(traj::DiscreteTrajectory{T}) where {T} = traj.nstates
+function Base.getindex(traj::DiscreteTrajectory{T}, idx::UnitRange{Int}) where {T}
+    return DiscreteTrajectory(
+        time(traj)[idx],
+        timesteps(traj)[idx],
+        knotpoints(traj, idx, view=false),
+        knotpointsize(traj),
+        nstates(traj)
+    )
+end
+function Base.view(traj::DiscreteTrajectory{T}, idx::UnitRange{Int}) where {T}
+    return DiscreteTrajectory(
+        view(time(traj), idx),
+        view(timesteps(traj), idx),
+        view(knotpoints(traj, idx), view=true),
+        knotpointsize(traj),
+        nstates(traj)
+    )
+end
 
 function initialize_trajectory(mechanism::Mechanism{T}, tf::T, Δt::T, nu::Int) where {T}
     ts, qs, vs = simulate_mechanism(mechanism, tf, Δt, zeros(T, 2), zeros(T, 2))
