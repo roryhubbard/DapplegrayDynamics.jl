@@ -59,7 +59,7 @@ end
 # TODO: dynamics! assumes fully actuated systems, figure out a method for
 # dealing with control vectors that are smaller in rank than the vector of
 # "velocities" in mechanism state
-function hermite_simpson_separated(mechanism::Mechanism, Δt::Real, xₖ::AbstractVector, uₖ::AbstractVector, xₖ₊₁::AbstractVector, uₖ₊₁::AbstractVector, xₘ::AbstractVector, uₘ::AbstractVector)
+function hermite_simpson_separated(mechanism::Mechanism{T}, Δt::Real, xₖ::AbstractVector{T}, uₖ::AbstractVector{T}, xₖ₊₁::AbstractVector{T}, uₖ₊₁::AbstractVector{T}, xₘ::AbstractVector{T}, uₘ::AbstractVector{T}) where {T}
     mechanismstate = MechanismState(mechanism)
     dynamicsresult = DynamicsResult(mechanism)
 
@@ -81,7 +81,7 @@ function hermite_simpson_separated(mechanism::Mechanism, Δt::Real, xₖ::Abstra
     c₂ = ẋₘ - 1 / 2 * (xₖ + xₖ₊₁) - Δt / 8 * (ẋₖ - ẋₖ₊₁)
     c₁, c₂
 end
-function hermite_simpson_compressed(mechanism::Mechanism, Δt::Real, xₖ::AbstractVector, uₖ::AbstractVector, xₖ₊₁::AbstractVector, uₖ₊₁::AbstractVector)
+function hermite_simpson_compressed(mechanism::Mechanism{T}, Δt::Real, xₖ::AbstractVector{T}, uₖ::AbstractVector{T}, xₖ₊₁::AbstractVector{T}, uₖ₊₁::AbstractVector{T}) where {T}
     mechanismstate = MechanismState(mechanism)
     dynamicsresult = DynamicsResult(mechanism)
 
