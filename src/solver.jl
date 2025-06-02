@@ -28,6 +28,7 @@ function knotpointindices(trajectory::DiscreteTrajectory{T}, idx::UnitRange{Int}
     idx₀:idx₁
 end
 knotpointindices(trajectory::DiscreteTrajectory{T}, idx::Int) where {T} = knotpointindices(trajectory, idx:idx)
+knotpointindex(trajectory::DiscreteTrajectory{T}, idx::Int) where {T} = (idx - 1) * knotpointsize(trajectory) + 1
 
 knotpointsize(trajectory::DiscreteTrajectory{T}) where {T} = trajectory.knotpointsize
 
@@ -53,8 +54,35 @@ function Base.view(trajectory::DiscreteTrajectory{T}, idx::UnitRange{Int}) where
     )
 end
 
-Base.getindex(traj::DiscreteTrajectory{T}, idx::Int) where {T} = traj[idx:idx]
-Base.view(traj::DiscreteTrajectory{T}, idx::Int) where {T} = view(traj, idx:idx)
+Base.getindex(trajectory::DiscreteTrajectory{T}, idx::Int) where {T} = trajectory[idx:idx]
+Base.view(trajectory::DiscreteTrajectory{T}, idx::Int) where {T} = view(trajectory, idx:idx)
+
+function state(trajectory::DiscreteTrajectory{T}, idx::Int) where {T}
+    k = knotpoints(trajectory)
+    i₀ = knotpointindex(trajectory, idx)
+    i₁ = i₀ + nstates(trajectory) - 1
+    x = @view k[i₀:i₁]
+    x
+end
+function state(trajectory::DiscreteTrajectory{T}, ::Val{N}) where {T, N}
+    k = knotpoints(trajectory)
+    return ntuple(i -> state(trajectory, i), Val(N))
+end
+
+function control(trajectory::DiscreteTrajectory{T}, idx::Int) where {T}
+    k = knotpoints(trajectory)
+    xidx₀ = knotpointindex(trajectory, idx)
+    i₀ = xidx₀ + nstates(trajectory)
+    i₁ = xidx₀ + knotpointsize(trajectory) - 1
+    u = @view k[i₀:i₁]
+    u
+end
+function control(trajectory::DiscreteTrajectory{T}, ::Val{N}) where {T, N}
+    k = knotpoints(trajectory)
+    nx = nstates(trajectory)
+    ksize = knotpointsize(trajectory)
+    return ntuple(i -> control(trajectory, i), Val(N))
+end
 
 function initialize_trajectory(mechanism::Mechanism{T}, tf::T, Δt::T, nu::Int) where {T}
     ts, qs, vs = simulate_mechanism(mechanism, tf, Δt, zeros(T, 2), zeros(T, 2))

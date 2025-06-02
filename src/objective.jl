@@ -25,11 +25,9 @@ struct LQRCost{T} <: SingleKnotPointFunction
 end
 
 function (cost::LQRCost)(z::DiscreteTrajectory)
-    k = knotpoints(z)
-    nx = nstates(z)
-    @assert length(k) == knotpointsize(z) "LQRCost only accepts a single knotpoint: expected knotpoint vector length of $(knotpointsize(z)) but received $(length(k))"
-    x = @view k[1:nx]
-    u = @view k[nx+1:end]
+    @assert length(knotpoints(z)) == knotpointsize(z) "LQRCost only accepts a single knotpoint: expected $(knotpointsize(z)) but received $(length(knotpoints(z)))"
+    x = state(z, 1)
+    u = control(z, 1)
     x̄ = (x - cost.xd)
     ū = (u - cost.ud)
     1 / 2 * (x̄' * cost.Q * x̄ + ū' * cost.R * ū)

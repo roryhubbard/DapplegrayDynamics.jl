@@ -118,16 +118,10 @@ struct HermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
     end
 end
 function (con::HermiteSimpsonConstraint)(z::DiscreteTrajectory{T}) where {T}
-    xₖ = state(zₖ)
-    uₖ = control(zₖ)
-    xₖ₊₁ = state(zₖ₊₁)
-    uₖ₊₁ = control(zₖ₊₁)
-
-    k = knotpoints(z)
-    nx = nstates(z)
-    x = @view k[1:nx]
-    u = @view k[nx+1:end]
-    Δt = timesteps(zₖ)
-    @assert length(x) == knotpointsize(z) * nknots(con) "ConicConstraint expected knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(x))"
-    hermite_simpson_compressed(con.mechanism, Δt, xₖ, uₖ, xₖ₊₁, uₖ₊₁)
+    Δt = timesteps(z)
+    @assert length(Δt) == 2 "HermiteSimpsonConstraint expects two knotpoints and therefore 2 timesteps, but received $(length(Δt))"
+    @assert length(knotpoints(x)) == knotpointsize(z) * nknots(con) "HermiteSimpsonConstraint expects knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(knotpoints(x)))"
+    xₖ, xₖ₊₁ = state(z, Val(2))
+    uₖ, uₖ₊₁ = control(z, Val(2))
+    hermite_simpson_compressed(con.mechanism, first(Δt), xₖ, uₖ, xₖ₊₁, uₖ₊₁)
 end
