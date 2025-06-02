@@ -9,7 +9,7 @@ using StaticArrays
 
 export df, doublependulum
 
-include("constraint.jl")
+include("constraints.jl")
 include("knotpointfunction.jl")
 include("objective.jl")
 include("rigidbodydynamics.jl")
