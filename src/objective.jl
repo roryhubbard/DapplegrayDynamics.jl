@@ -1,4 +1,4 @@
-struct LQRCost{T} <: SingleKnotPointFunction
+struct LQRCost{T} <: AdjacentKnotPointsFunction
     Q::AbstractMatrix{T}
     R::AbstractMatrix{T}
     xd::AbstractVector{T}

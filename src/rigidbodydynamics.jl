@@ -1,4 +1,4 @@
-function doublependulum()::Mechanism{T} where {T}
+function doublependulum()::Mechanism{T}
     g = -9.81 # gravitational acceleration in z-direction
     world = RigidBody{T}("world")
     doublependulum = Mechanism(world; gravity = SVector(T, 0, 0, g))

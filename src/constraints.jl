@@ -45,7 +45,7 @@ function control_bound_constraint(
 end
 
 function state_equality_constraint(
-    xd::AbstractVector{T}
+    xd::AbstractVector{T},
     knotpointsize::Int,
     idx::UnitRange{Int},
 )::ConicConstraint{T} where {T}
