@@ -7,7 +7,7 @@ using RigidBodyDynamics
 using SparseArrays
 using StaticArrays
 
-export df, doublependulum
+export df
 
 include("trajectory.jl")
 include("knotpointsfunction.jl")
@@ -20,6 +20,7 @@ function df(method::Symbol = :sqp)
     mechanism = doublependulum()
     nx = num_positions(mechanism) + num_velocities(mechanism)
     nu = 1 # control dimension
+    knotpointsize = nx + nu
 
     N = 2
     tf = 1.0           # final time (sec)
@@ -33,25 +34,24 @@ function df(method::Symbol = :sqp)
     R = 0.1 * I(nu) * Δt
 
     objectives = [
-        LQRCost(Q, R, xf, 1:N-1),
+        LQRCost(Q, R, xf, 1:N),
     ]
 
     τbound = 3.0
     inequality_constraints = [
-        ControlBound([τbound], [-τbound], 1:N-1),
+        control_bound_constraint([τbound], [-τbound], knotpointsize, 1:N-1),
     ]
     equality_constraints = [
         HermiteSimpsonConstraint(mechanism, 1:N-1),
-#        StateEqualityConstraint(x0, 1:1),
-#        StateEqualityConstraint(xf, N:N),
+        state_equality_constraint(x0, knotpointsize, 1),
+        state_equality_constraint(xf, knotpointsize, N),
     ]
 
     knotpoint_trajectory = initialize_trajectory(mechanism, tf, Δt, nu)
 
     problem = Problem(mechanism, objectives, equality_constraints, inequality_constraints, knotpoint_trajectory)
 
-    solver = SQP()
-    solve!(solver, problem)
+    solve!(problem)
 end
 
 end

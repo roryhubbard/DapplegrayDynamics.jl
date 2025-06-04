@@ -4,7 +4,7 @@ struct DiscreteTrajectory{T}
     knotpoints::AbstractVector{T}
     knotpointsize::Int
     nstates::Int
-    function(time::AbstractVector{T}, timesteps::AbstractVector{T}, knotpoints::AbstractVector{T}, knotpointsize::Int, nstates::Int) where {T}
+    function DiscreteTrajectory(time::AbstractVector{T}, timesteps::AbstractVector{T}, knotpoints::AbstractVector{T}, knotpointsize::Int, nstates::Int) where {T}
         nk = length(knotpoints) ÷ knotpointsize
         @assert length(time) == length(timesteps) == nk "lengths must match"
         new{T}(time, timesteps, knotpoints, knotpointsize, nstates)

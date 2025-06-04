@@ -7,12 +7,36 @@ struct ConicConstraint{T} <: AdjacentKnotPointsConstraint
     idx::UnitRange{Int}
     nknots::Int
     outputdim::Int
+    function ConicConstraint(A::SparseMatrixCSC{T, Int}, b::AbstractVector{T},
+                             conetype::Type{<:Clarabel.SupportedCone}, idx::UnitRange{Int},
+                             nknots::Int) where {T}
+        coneN = length(b)
+        new{T}(A, b, conetype(coneN), idx, nknots, coneN)
+    end
 end
 cone(::ConicConstraint) = error("cone not defined")
 function (con::ConicConstraint{T})(z::DiscreteTrajectory{T}) where {T}
     x = knotpoints(z)
     @assert length(x) == knotpointsize(z) * nknots(con) "ConicConstraint expected knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(x))"
     A * x - b
+end
+
+function conic_lowerbound_Ab(lowerbound::AbstractVector{T}, knotpointsize::Int) where {T}
+    outputdim = length(lowerbound)
+    A = spzeros(T, outputdim, knotpointsize)
+    col₀ = knotpointsize - outputdim + 1
+    A[:, col₀:end] .= -I(outputdim)
+    b = -lowerbound
+    A, b
+end
+
+function conic_upperbound_Ab(upperbound::AbstractVector{T}, knotpointsize::Int) where {T}
+    outputdim = length(upperbound)
+    A = spzeros(T, outputdim, knotpointsize)
+    col₀ = knotpointsize - outputdim + 1
+    A[:, col₀:end] .= I(outputdim)
+    b = upperbound
+    A, b
 end
 
 function control_bound_constraint(
@@ -23,25 +47,32 @@ function control_bound_constraint(
 )::ConicConstraint{T} where {T}
     if isnothing(upperbound) && isnothing(lowerbound)
         throw(ArgumentError("At least one of upperbound or lowerbound must be provided."))
-    elseif length(upperbound) != length(lowerbound)
-        throw(ArgumentError("Bounds must have equal length (got upperbound length = $(length(upperbound)), lowerbound length = $(length(lowerbound)))"))
     end
 
-    if isnothing(con.upperbound)
-        outputdim = length(con.lowerbound)
-        A = spzeros(outputdim, knotpointsize)
-        col₀ = knotpointsize - outputdim + 1
-        A[:, col₀:end] .= -I(outputdim)
-        b = -lb
-    elseif isnothing(con.lowerbound)
-        outputdim = length(con.upperbound)
-        A = spzeros(outputdim, knotpointsize)
-        col₀ = knotpointsize - outputdim + 1
-        A[:, col₀:end] .= I(outputdim)
-        b = ub
+    if isnothing(upperbound)
+        A, b = conic_lowerbound_Ab(lowerbound, knotpointsize)
+    elseif isnothing(lowerbound)
+        A, b = conic_upperbound_Ab(lowerbound, knotpointsize)
+    else
+        if length(upperbound) != length(lowerbound)
+            throw(ArgumentError("Bounds must have equal length (got upperbound length = $(length(upperbound)), lowerbound length = $(length(lowerbound)))"))
+        end
+        Aₗ, bₗ = conic_lowerbound_Ab(lowerbound, knotpointsize)
+        Aᵤ, bᵤ = conic_upperbound_Ab(lowerbound, knotpointsize)
+        A = [Aₗ; Aᵤ]
+        b = [bₗ; bᵤ]
     end
 
-    ConicConstraint(A, b, Clarabel.NonnegativeCone(outputdim), idx, 1, outputdim)
+    ConicConstraint(A, b, Clarabel.NonnegativeConeT, idx, 1)
+end
+
+function control_bound_constraint(
+    upperbound::Union{AbstractVector{T}, Nothing},
+    lowerbound::Union{AbstractVector{T}, Nothing},
+    knotpointsize::Int,
+    idx::Int,
+)::ConicConstraint{T} where {T}
+    control_bound_constraint(upperbound, lowerbound, knotpointsize, idx:idx)
 end
 
 function state_equality_constraint(
@@ -53,7 +84,15 @@ function state_equality_constraint(
     A = spzeros(outputdim, knotpointsize)
     A[:, 1:outputdim] .= I(outputdim)
     b = zeros(outputdim)
-    ConicConstraint(A, b, Clarabel.ZeroConeT(outputdim), idx, 1, outputdim)
+    ConicConstraint(A, b, Clarabel.ZeroConeT, idx, 1)
+end
+
+function state_equality_constraint(
+    xd::AbstractVector{T},
+    knotpointsize::Int,
+    idx::Int,
+)::ConicConstraint{T} where {T}
+    state_equality_constraint(xd, knotpointsize, idx:idx)
 end
 
 # TODO: dynamics! assumes fully actuated systems, figure out a method for

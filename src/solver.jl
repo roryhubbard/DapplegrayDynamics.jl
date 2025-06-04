@@ -14,19 +14,16 @@ inequality_constraints(problem::Problem) = problem.inequality_constraints
 
 trajectory(problem::Problem) = problem.trajectory
 
-struct SQP{T}
-end
-
 function initialize_trajectory(mechanism::Mechanism{T}, tf::T, Δt::T, nu::Int) where {T}
     ts, qs, vs = simulate_mechanism(mechanism, tf, Δt, zeros(T, 2), zeros(T, 2))
 
     N  = length(ts)
-    nx = num_positions(con.mechanism) + num_velocities(con.mechanism)
+    nx = num_positions(mechanism) + num_velocities(mechanism)
     knotpointsize = nx + nu
     num_decision_variables = N * knotpointsize
     zero_control_vector = zeros(nu)
 
-    timesteps = Vector{T}(Δt, N)
+    timesteps = fill(T(Δt), N)
     knotpoints = Vector{T}(undef, num_decision_variables)
 
     for i in 1:N
@@ -65,7 +62,7 @@ function evaluate_constraints(constraints::AbstractVector{<:AdjacentKnotPointsFu
     return result
 end
 
-function solve!(solver::SQP{T}, problem::Problem{T}) where {T}
+function solve!(problem::Problem{T}) where {T}
     v = zeros(num_lagrange_multipliers(equality_constraints(problem)))
     println("v: ", v)
 
