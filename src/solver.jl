@@ -3,7 +3,7 @@ struct Problem{T}
     objectives::AbstractVector{<:AdjacentKnotPointsFunction}
     equality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
     inequality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
-    trajectory::DiscreteTrajectory{T}
+    trajectory::DiscreteTrajectory{T, T}
 end
 
 objectives(problem::Problem) = problem.objectives
@@ -44,7 +44,7 @@ function num_lagrange_multipliers(constraints::AbstractVector{<:AdjacentKnotPoin
     result
 end
 
-function evaluate_objective(objectives::AbstractVector{<:AdjacentKnotPointsFunction}, trajectory::DiscreteTrajectory{T}) where {T}
+function evaluate_objective(objectives::AbstractVector{<:AdjacentKnotPointsFunction}, trajectory::DiscreteTrajectory)
     result = 0.0
     for objective ∈ objectives
         result += objective(Val(Sum), trajectory)

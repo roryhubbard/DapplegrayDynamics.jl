@@ -15,7 +15,7 @@ struct ConicConstraint{T} <: AdjacentKnotPointsConstraint
     end
 end
 cone(::ConicConstraint) = error("cone not defined")
-function (con::ConicConstraint{T})(z::DiscreteTrajectory{T}) where {T}
+function (con::ConicConstraint{T})(z::DiscreteTrajectory) where {T}
     x = knotpoints(z)
     @assert length(x) == knotpointsize(z) * nknots(con) "ConicConstraint expected knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(x))"
     con.A * x - con.b
@@ -120,9 +120,9 @@ function hermite_simpson_separated(mechanism::Mechanism{T}, Δt::Real, xₖ::Abs
     c₂ = ẋₘ - 1 / 2 * (xₖ + xₖ₊₁) - Δt / 8 * (ẋₖ - ẋₖ₊₁)
     c₁, c₂
 end
-function hermite_simpson_compressed(mechanism::Mechanism{T}, Δt::Real, xₖ::AbstractVector{T}, uₖ::AbstractVector{T}, xₖ₊₁::AbstractVector{T}, uₖ₊₁::AbstractVector{T}) where {T}
-    mechanismstate = MechanismState(mechanism)
-    dynamicsresult = DynamicsResult(mechanism)
+function hermite_simpson_compressed(mechanism::Mechanism{Tm}, Δt::Real, xₖ::AbstractVector{Tk}, uₖ::AbstractVector{Tk}, xₖ₊₁::AbstractVector{Tk}, uₖ₊₁::AbstractVector{Tk}) where {Tm, Tk}
+    mechanismstate = MechanismState{Tk}(mechanism)
+    dynamicsresult = DynamicsResult{Tk}(mechanism)
 
     τₖ = vcat(0., uₖ)
     ẋₖ = similar(xₖ)
@@ -156,7 +156,7 @@ struct HermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
         new{T}(mechanism, idx, 2, outputdim)
     end
 end
-function (con::HermiteSimpsonConstraint)(z::DiscreteTrajectory{T}) where {T}
+function (con::HermiteSimpsonConstraint)(z::DiscreteTrajectory)
     Δt = timesteps(z)
     @assert length(Δt) == 2 "HermiteSimpsonConstraint expects two knotpoints and therefore 2 timesteps, but received $(length(Δt))"
     @assert length(knotpoints(z)) == knotpointsize(z) * nknots(con) "HermiteSimpsonConstraint expects knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(knotpoints(z)))"
