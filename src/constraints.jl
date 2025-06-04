@@ -18,7 +18,7 @@ cone(::ConicConstraint) = error("cone not defined")
 function (con::ConicConstraint{T})(z::DiscreteTrajectory{T}) where {T}
     x = knotpoints(z)
     @assert length(x) == knotpointsize(z) * nknots(con) "ConicConstraint expected knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(x))"
-    A * x - b
+    con.A * x - con.b
 end
 
 function conic_lowerbound_Ab(lowerbound::AbstractVector{T}, knotpointsize::Int) where {T}
@@ -159,7 +159,7 @@ end
 function (con::HermiteSimpsonConstraint)(z::DiscreteTrajectory{T}) where {T}
     Δt = timesteps(z)
     @assert length(Δt) == 2 "HermiteSimpsonConstraint expects two knotpoints and therefore 2 timesteps, but received $(length(Δt))"
-    @assert length(knotpoints(x)) == knotpointsize(z) * nknots(con) "HermiteSimpsonConstraint expects knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(knotpoints(x)))"
+    @assert length(knotpoints(z)) == knotpointsize(z) * nknots(con) "HermiteSimpsonConstraint expects knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(knotpoints(z)))"
     xₖ, xₖ₊₁ = state(z, Val(2))
     uₖ, uₖ₊₁ = control(z, Val(2))
     hermite_simpson_compressed(con.mechanism, first(Δt), xₖ, uₖ, xₖ₊₁, uₖ₊₁)

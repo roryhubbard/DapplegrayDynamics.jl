@@ -48,7 +48,7 @@ function Base.view(trajectory::DiscreteTrajectory{T}, idx::UnitRange{Int}) where
     return DiscreteTrajectory(
         view(time(trajectory), idx),
         view(timesteps(trajectory), idx),
-        view(knotpoints(trajectory, idx), useview=true),
+        knotpoints(trajectory, idx, useview=true),
         knotpointsize(trajectory),
         nstates(trajectory)
     )

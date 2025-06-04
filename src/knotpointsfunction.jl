@@ -9,17 +9,17 @@ struct Sum <: ResultAccumulationMethod end
 struct Concatenate <: ResultAccumulationMethod end
 
 # Evaluation
-function (func::AdjacentKnotPointsFunction)(::Sum, Z::DiscreteTrajectory{T}) where {T}
+function (func::AdjacentKnotPointsFunction)(::Val{Sum}, Z::DiscreteTrajectory{T}) where {T}
     result = zero(T)
     for i₀ ∈ indices(func)
         i₁ = i₀ + (nknots(func) - 1)
         z = @view Z[i₀:i₁]
-        result += func(z, nstates(Z))
+        result += func(z)
     end
     result
 end
 
-function (func::AdjacentKnotPointsFunction)(::Concatenate, Z::DiscreteTrajectory{T}) where {T}
+function (func::AdjacentKnotPointsFunction)(::Val{Concatenate}, Z::DiscreteTrajectory{T}) where {T}
     outputs = map(indices(func)) do i₀
         i₁ = i₀ + (nknots(func) - 1)
         z = @view Z[i₀:i₁]
@@ -36,25 +36,25 @@ function gradient_impl!(▽f::AbstractVector{T}, func::AdjacentKnotPointsFunctio
     ForwardDiff.gradient!(▽f, fwrapped, z)
 end
 
-function gradient_singlef!(▽f_vstacked::AbstractVector{T}, func::AdjacentKnotPointsFunction, Z::DiscreteTrajectory{T}) where {T}
-    for (i₀, idx) in enumerate(indices(func))
-        i₁ = i₀ + nknots(func) - 1
-        colrange = knotpointindices(Z, i₀:i₁)
-        z = @view Z[i₀:i₁]
-        rowview = view(▽f_vstacked, i, colrange)
+function gradient_singlef!(▽f_vstacked::AbstractMatrix{T}, func::AdjacentKnotPointsFunction, Z::DiscreteTrajectory{T}) where {T}
+    for (i, col₀) in enumerate(indices(func))
+        col₁ = col₀ + nknots(func) - 1
+        colrange = knotpointindices(Z, col₀:col₁)
+        z = @view Z[col₀:col₁]
+        rowview = @view ▽f_vstacked[i, colrange]
         gradient_impl!(rowview, func, z)
     end
 end
 
 function gradient(funcs::AbstractVector{<:AdjacentKnotPointsFunction}, Z::DiscreteTrajectory{T}) where {T}
     m = sum(length(indices(func)) for func in funcs)
-    n = knotpointsize(Z) * length(Z)
+    n = length(knotpoints(Z))
     ▽f_vstacked = zeros(Float64, m, n)
 
     current_row_idx = 1
     for func ∈ funcs
         band_height = length(indices(func))
-        band_view = view(▽f_vstacked, current_row_idx:band_height, :)
+        band_view = @view ▽f_vstacked[current_row_idx:band_height, :]
         gradient_singlef!(band_view, func, Z)
         current_row_idx += band_height + 1
     end
@@ -73,12 +73,12 @@ function jacobian_singlef!(J_vstacked::AbstractMatrix{T}, func::AdjacentKnotPoin
     slice_length = nknots(func) * knotpointsize(Z)
     Jheight = outputdim(func)
 
-    for (i₀, idx) in enumerate(indices(func))
+    for (i, col₀) in enumerate(indices(func))
         row₀ = (i - 1) * Jheight + 1
         row₁ = row₀ + Jheight - 1
-        i₁ = i₀ + nknots(func) - 1
-        colrange = knotpointindices(Z, i₀:i₁)
-        z = @view Z[i₀:i₁]
+        col₁ = col₀ + nknots(func) - 1
+        colrange = knotpointindices(Z, col₀:col₁)
+        z = @view Z[col₀:col₁]
         band = @view J_vstacked[row₀:row₁, colrange]
         jacobian_impl!(band, func, z)
     end

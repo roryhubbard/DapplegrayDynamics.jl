@@ -47,7 +47,7 @@ end
 function evaluate_objective(objectives::AbstractVector{<:AdjacentKnotPointsFunction}, trajectory::DiscreteTrajectory{T}) where {T}
     result = 0.0
     for objective ∈ objectives
-        result += objective(Sum, trajectory)
+        result += objective(Val(Sum), trajectory)
     end
     result
 end
@@ -56,7 +56,7 @@ function evaluate_constraints(constraints::AbstractVector{<:AdjacentKnotPointsFu
     # TODO: preallocate before here
     result = Vector{T}()
     for constraint in constraints
-        val = constraint(Concatenate, trajectory)
+        val = constraint(Val(Concatenate), trajectory)
         append!(result, val)
     end
     return result
