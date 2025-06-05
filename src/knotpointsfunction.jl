@@ -66,12 +66,12 @@ function gradient(
     n = length(knotpoints(Z))
     ▽f_vstacked = zeros(T, m, n)
 
-    current_row_idx = 1
-    for func ∈ funcs
+    for (i, func) ∈ enumerate(funcs)
         band_height = length(indices(func))
-        band_view = @view ▽f_vstacked[current_row_idx:band_height, :]
+        row₀ = (i - 1) * band_height + 1
+        row₁ = row₀ + band_height - 1
+        band_view = @view ▽f_vstacked[row₀:row₁, :]
         gradient_singlef!(band_view, func, Z)
-        current_row_idx += band_height + 1
     end
 
     ▽f_vstacked
@@ -136,7 +136,7 @@ function jacobian(
 end
 
 # Hessian
-function hessian(
+function hessian_impl!(
     H::AbstractMatrix{T},
     func::AdjacentKnotPointsFunction,
     Z::DiscreteTrajectory,
