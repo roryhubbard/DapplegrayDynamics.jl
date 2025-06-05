@@ -62,7 +62,7 @@ function evaluate_constraints(
     # TODO: preallocate before here
     result = Vector{T}()
     for constraint in constraints
-        val = constraint(Val(Concatenate), trajectory)
+        val = constraint(Val(Stack), trajectory)
         append!(result, val)
     end
     return result
@@ -100,10 +100,9 @@ function solve!(problem::Problem{T}) where {T}
 
         L = evaluate_lagrangian(fₖ, λ, gₖ, v, hₖ)
         println("L: ", L)
-        #        ▽ₓ𝒇 = gradient(𝒇)
-        #        𝑱ₓ𝒉 = jacobian(𝒉)
-        #        𝑱ₓ𝒈 = jacobian(𝒈)
-        #        # ▽ₓℒ = gradiant(ℒ)
+
+#        ▽L = ▽Lagrangian(▽f_vstacked, )
+
         #        ▽ₓℒ = ▽ₓ𝒇 + 𝑱ₓ𝒉'𝒗 + 𝑱ₓ𝒈'𝝀
         #        ▽²ₓₓℒ = hessian(▽ₓℒ)
         #

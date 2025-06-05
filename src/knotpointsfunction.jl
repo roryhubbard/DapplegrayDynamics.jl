@@ -7,7 +7,7 @@ outputdim(func::AdjacentKnotPointsFunction) = func.outputdim
 
 abstract type ResultAccumulationMethod end
 struct Sum <: ResultAccumulationMethod end
-struct Concatenate <: ResultAccumulationMethod end
+struct Stack <: ResultAccumulationMethod end
 
 # Evaluation
 function (func::AdjacentKnotPointsFunction)(::Val{Sum}, Z::DiscreteTrajectory{T}) where {T}
@@ -20,7 +20,8 @@ function (func::AdjacentKnotPointsFunction)(::Val{Sum}, Z::DiscreteTrajectory{T}
     result
 end
 
-function (func::AdjacentKnotPointsFunction)(::Val{Concatenate}, Z::DiscreteTrajectory)
+function (func::AdjacentKnotPointsFunction)(::Val{Stack}, Z::DiscreteTrajectory)
+    # TOOD: preallocate
     outputs = map(indices(func)) do i₀
         i₁ = i₀ + (nknots(func) - 1)
         z = @view Z[i₀:i₁]
