@@ -89,8 +89,8 @@ function solve!(problem::Problem{T}) where {T}
         gₖ = evaluate_constraints(inequality_constraints(problem), trajectory(problem))
         println("gₖ: ", hₖ)
 
-        ▽f_vstacked = gradient(objectives(problem), trajectory(problem))
-        println("▽f_vstacked: ", Matrix(▽f_vstacked))
+        ▽f = gradient(Val(Sum), objectives(problem), trajectory(problem))
+        println("▽f: ", Matrix(▽f))
 
         Jh = jacobian(equality_constraints(problem), trajectory(problem))
         println("Jh: ", Jh)

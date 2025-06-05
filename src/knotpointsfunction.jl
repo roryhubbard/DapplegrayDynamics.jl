@@ -58,12 +58,13 @@ function gradient_singlef!(
 end
 
 function gradient(
+    ::Val{Stack},
     funcs::AbstractVector{<:AdjacentKnotPointsFunction},
-    Z::DiscreteTrajectory,
-)
+    Z::DiscreteTrajectory{T},
+) where {T}
     m = sum(length(indices(func)) for func in funcs)
     n = length(knotpoints(Z))
-    ▽f_vstacked = zeros(Float64, m, n)
+    ▽f_vstacked = zeros(T, m, n)
 
     current_row_idx = 1
     for func ∈ funcs
@@ -74,6 +75,15 @@ function gradient(
     end
 
     sparse(▽f_vstacked)
+end
+
+function gradient(
+    ::Val{Sum},
+    funcs::AbstractVector{<:AdjacentKnotPointsFunction},
+    Z::DiscreteTrajectory{T},
+) where {T}
+    ▽f_vstacked = gradient(Val(Stack), funcs, Z)
+    sum(▽f_vstacked, dims=1)
 end
 
 # Jacobian
