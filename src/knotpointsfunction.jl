@@ -2,7 +2,8 @@ abstract type AdjacentKnotPointsFunction end
 indices(func::AdjacentKnotPointsFunction) = func.idx
 nknots(func::AdjacentKnotPointsFunction) = func.nknots
 outputdim(func::AdjacentKnotPointsFunction) = func.outputdim
-(func::AdjacentKnotPointsFunction)(Z::DiscreteTrajectory) = error("call on knotpoint(s) not implemented")
+(func::AdjacentKnotPointsFunction)(Z::DiscreteTrajectory) =
+    error("call on knotpoint(s) not implemented")
 
 abstract type ResultAccumulationMethod end
 struct Sum <: ResultAccumulationMethod end
@@ -29,14 +30,23 @@ function (func::AdjacentKnotPointsFunction)(::Val{Concatenate}, Z::DiscreteTraje
 end
 
 # Gradient
-function gradient_impl!(▽f::AbstractVector{T}, func::AdjacentKnotPointsFunction, Z::DiscreteTrajectory) where {T}
+function gradient_impl!(
+    ▽f::AbstractVector{T},
+    func::AdjacentKnotPointsFunction,
+    Z::DiscreteTrajectory,
+) where {T}
     z = knotpoints(Z)
     # Rest assured, no copying happening here
-    fwrapped(z) = func(DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)))
+    fwrapped(z) =
+        func(DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)))
     ForwardDiff.gradient!(▽f, fwrapped, z)
 end
 
-function gradient_singlef!(▽f_vstacked::AbstractMatrix{T}, func::AdjacentKnotPointsFunction, Z::DiscreteTrajectory) where {T}
+function gradient_singlef!(
+    ▽f_vstacked::AbstractMatrix{T},
+    func::AdjacentKnotPointsFunction,
+    Z::DiscreteTrajectory,
+) where {T}
     for (i, col₀) in enumerate(indices(func))
         col₁ = col₀ + nknots(func) - 1
         colrange = knotpointindices(Z, col₀:col₁)
@@ -46,7 +56,10 @@ function gradient_singlef!(▽f_vstacked::AbstractMatrix{T}, func::AdjacentKnotP
     end
 end
 
-function gradient(funcs::AbstractVector{<:AdjacentKnotPointsFunction}, Z::DiscreteTrajectory)
+function gradient(
+    funcs::AbstractVector{<:AdjacentKnotPointsFunction},
+    Z::DiscreteTrajectory,
+)
     m = sum(length(indices(func)) for func in funcs)
     n = length(knotpoints(Z))
     ▽f_vstacked = zeros(Float64, m, n)
@@ -63,13 +76,22 @@ function gradient(funcs::AbstractVector{<:AdjacentKnotPointsFunction}, Z::Discre
 end
 
 # Jacobian
-function jacobian_impl!(J::AbstractMatrix{T}, func::AdjacentKnotPointsFunction, Z::DiscreteTrajectory) where {T}
+function jacobian_impl!(
+    J::AbstractMatrix{T},
+    func::AdjacentKnotPointsFunction,
+    Z::DiscreteTrajectory,
+) where {T}
     z = knotpoints(Z)
-    fwrapped(z) = func(DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)))
+    fwrapped(z) =
+        func(DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)))
     ForwardDiff.jacobian!(J, fwrapped, z)
 end
 
-function jacobian_singlef!(J_vstacked::AbstractMatrix{T}, func::AdjacentKnotPointsFunction, Z::DiscreteTrajectory) where {T}
+function jacobian_singlef!(
+    J_vstacked::AbstractMatrix{T},
+    func::AdjacentKnotPointsFunction,
+    Z::DiscreteTrajectory,
+) where {T}
     Jheight = outputdim(func)
 
     for (i, col₀) in enumerate(indices(func))
@@ -83,7 +105,10 @@ function jacobian_singlef!(J_vstacked::AbstractMatrix{T}, func::AdjacentKnotPoin
     end
 end
 
-function jacobian(funcs::AbstractVector{<:AdjacentKnotPointsFunction}, Z::DiscreteTrajectory{T}) where {T}
+function jacobian(
+    funcs::AbstractVector{<:AdjacentKnotPointsFunction},
+    Z::DiscreteTrajectory{T},
+) where {T}
     m = sum(length(indices(func)) * outputdim(func) for func in funcs)
     n = length(knotpoints(Z))
     J_vstacked = zeros(T, m, n)
@@ -100,8 +125,13 @@ function jacobian(funcs::AbstractVector{<:AdjacentKnotPointsFunction}, Z::Discre
 end
 
 # Hessian
-function hessian(H::AbstractMatrix{T}, func::AdjacentKnotPointsFunction, Z::DiscreteTrajectory) where {T}
+function hessian(
+    H::AbstractMatrix{T},
+    func::AdjacentKnotPointsFunction,
+    Z::DiscreteTrajectory,
+) where {T}
     z = knotpoints(Z)
-    fwrapped(z) = func(DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)))
+    fwrapped(z) =
+        func(DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)))
     ForwardDiff.hessian!(H, fwrapped, z)
 end

@@ -33,23 +33,26 @@ function df(method::Symbol = :sqp)
     Qf = 100.0 * I(nx)
     R = 0.1 * I(nu) * Δt
 
-    objectives = [
-        LQRCost(Q, R, xf, 1:N),
-    ]
+    objectives = [LQRCost(Q, R, xf, 1:N)]
 
     τbound = 3.0
-    inequality_constraints = [
-        control_bound_constraint([τbound], [-τbound], knotpointsize, 1:N-1),
-    ]
+    inequality_constraints =
+        [control_bound_constraint([τbound], [-τbound], knotpointsize, 1:(N-1))]
     equality_constraints = [
-        HermiteSimpsonConstraint(mechanism, 1:N-1),
+        HermiteSimpsonConstraint(mechanism, 1:(N-1)),
         state_equality_constraint(x0, knotpointsize, 1),
         state_equality_constraint(xf, knotpointsize, N),
     ]
 
     knotpoint_trajectory = initialize_trajectory(mechanism, tf, Δt, nu)
 
-    problem = Problem(mechanism, objectives, equality_constraints, inequality_constraints, knotpoint_trajectory)
+    problem = Problem(
+        mechanism,
+        objectives,
+        equality_constraints,
+        inequality_constraints,
+        knotpoint_trajectory,
+    )
 
     solve!(problem)
 end

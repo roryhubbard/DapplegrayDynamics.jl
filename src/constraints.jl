@@ -1,15 +1,19 @@
 abstract type AdjacentKnotPointsConstraint <: AdjacentKnotPointsFunction end
 
 struct ConicConstraint{T} <: AdjacentKnotPointsConstraint
-    A::SparseMatrixCSC{T, Int}
+    A::SparseMatrixCSC{T,Int}
     b::AbstractVector{T}
     cone::Clarabel.SupportedCone
     idx::UnitRange{Int}
     nknots::Int
     outputdim::Int
-    function ConicConstraint(A::SparseMatrixCSC{T, Int}, b::AbstractVector{T},
-                             conetype::Type{<:Clarabel.SupportedCone}, idx::UnitRange{Int},
-                             nknots::Int) where {T}
+    function ConicConstraint(
+        A::SparseMatrixCSC{T,Int},
+        b::AbstractVector{T},
+        conetype::Type{<:Clarabel.SupportedCone},
+        idx::UnitRange{Int},
+        nknots::Int,
+    ) where {T}
         coneN = length(b)
         new{T}(A, b, conetype(coneN), idx, nknots, coneN)
     end
@@ -40,8 +44,8 @@ function conic_upperbound_Ab(upperbound::AbstractVector{T}, knotpointsize::Int) 
 end
 
 function control_bound_constraint(
-    upperbound::Union{AbstractVector{T}, Nothing},
-    lowerbound::Union{AbstractVector{T}, Nothing},
+    upperbound::Union{AbstractVector{T},Nothing},
+    lowerbound::Union{AbstractVector{T},Nothing},
     knotpointsize::Int,
     idx::UnitRange{Int},
 )::ConicConstraint{T} where {T}
@@ -55,7 +59,11 @@ function control_bound_constraint(
         A, b = conic_upperbound_Ab(lowerbound, knotpointsize)
     else
         if length(upperbound) != length(lowerbound)
-            throw(ArgumentError("Bounds must have equal length (got upperbound length = $(length(upperbound)), lowerbound length = $(length(lowerbound)))"))
+            throw(
+                ArgumentError(
+                    "Bounds must have equal length (got upperbound length = $(length(upperbound)), lowerbound length = $(length(lowerbound)))",
+                ),
+            )
         end
         Aₗ, bₗ = conic_lowerbound_Ab(lowerbound, knotpointsize)
         Aᵤ, bᵤ = conic_upperbound_Ab(lowerbound, knotpointsize)
@@ -67,8 +75,8 @@ function control_bound_constraint(
 end
 
 function control_bound_constraint(
-    upperbound::Union{AbstractVector{T}, Nothing},
-    lowerbound::Union{AbstractVector{T}, Nothing},
+    upperbound::Union{AbstractVector{T},Nothing},
+    lowerbound::Union{AbstractVector{T},Nothing},
     knotpointsize::Int,
     idx::Int,
 )::ConicConstraint{T} where {T}
@@ -98,21 +106,30 @@ end
 # TODO: dynamics! assumes fully actuated systems, figure out a method for
 # dealing with control vectors that are smaller in rank than the vector of
 # "velocities" in mechanism state
-function hermite_simpson_separated(mechanism::Mechanism{T}, Δt::Real, xₖ::AbstractVector{T}, uₖ::AbstractVector{T}, xₖ₊₁::AbstractVector{T}, uₖ₊₁::AbstractVector{T}, xₘ::AbstractVector{T}, uₘ::AbstractVector{T}) where {T}
+function hermite_simpson_separated(
+    mechanism::Mechanism{T},
+    Δt::Real,
+    xₖ::AbstractVector{T},
+    uₖ::AbstractVector{T},
+    xₖ₊₁::AbstractVector{T},
+    uₖ₊₁::AbstractVector{T},
+    xₘ::AbstractVector{T},
+    uₘ::AbstractVector{T},
+) where {T}
     mechanismstate = MechanismState(mechanism)
     dynamicsresult = DynamicsResult(mechanism)
 
     # TODO: remove this hardcode nullification of one of the actuators, see TODO
     # above
-    τₖ = vcat(0., uₖ)
+    τₖ = vcat(0.0, uₖ)
     ẋₖ = similar(xₖ)
     dynamics!(ẋₖ, dynamicsresult, mechanismstate, xₖ, τₖ)
 
-    τₖ₊₁ = vcat(0., uₖ₊₁)
+    τₖ₊₁ = vcat(0.0, uₖ₊₁)
     ẋₖ₊₁ = similar(xₖ₊₁)
     dynamics!(ẋₖ₊₁, dynamicsresult, mechanismstate, xₖ₊₁, τₖ₊₁)
 
-    τₘ = vcat(0., uₘ)
+    τₘ = vcat(0.0, uₘ)
     ẋₘ = similar(xₖ)
     dynamics!(ẋₘ, dynamicsresult, mechanismstate, xₘ, τₘ)
 
@@ -120,15 +137,22 @@ function hermite_simpson_separated(mechanism::Mechanism{T}, Δt::Real, xₖ::Abs
     c₂ = ẋₘ - 1 / 2 * (xₖ + xₖ₊₁) - Δt / 8 * (ẋₖ - ẋₖ₊₁)
     c₁, c₂
 end
-function hermite_simpson_compressed(mechanism::Mechanism{Tm}, Δt::Real, xₖ::AbstractVector{Tk}, uₖ::AbstractVector{Tk}, xₖ₊₁::AbstractVector{Tk}, uₖ₊₁::AbstractVector{Tk}) where {Tm, Tk}
+function hermite_simpson_compressed(
+    mechanism::Mechanism{Tm},
+    Δt::Real,
+    xₖ::AbstractVector{Tk},
+    uₖ::AbstractVector{Tk},
+    xₖ₊₁::AbstractVector{Tk},
+    uₖ₊₁::AbstractVector{Tk},
+) where {Tm,Tk}
     mechanismstate = MechanismState{Tk}(mechanism)
     dynamicsresult = DynamicsResult{Tk}(mechanism)
 
-    τₖ = vcat(0., uₖ)
+    τₖ = vcat(0.0, uₖ)
     ẋₖ = similar(xₖ)
     dynamics!(ẋₖ, dynamicsresult, mechanismstate, xₖ, τₖ)
 
-    τₖ₊₁ = vcat(0., uₖ₊₁)
+    τₖ₊₁ = vcat(0.0, uₖ₊₁)
     ẋₖ₊₁ = similar(xₖ₊₁)
     dynamics!(ẋₖ₊₁, dynamicsresult, mechanismstate, xₖ₊₁, τₖ₊₁)
 
@@ -138,7 +162,7 @@ function hermite_simpson_compressed(mechanism::Mechanism{Tm}, Δt::Real, xₖ::A
     # for the integral of the system dynamics.
     xₘ = 1 / 2 * (xₖ + xₖ₊₁) + Δt / 8 * (ẋₖ - ẋₖ₊₁)
     uₘ = 1 / 2 * (uₖ + uₖ₊₁)
-    τₘ = vcat(0., uₘ)
+    τₘ = vcat(0.0, uₘ)
     ẋₘ = similar(xₖ)
     dynamics!(ẋₘ, dynamicsresult, mechanismstate, xₘ, τₘ)
 
@@ -151,7 +175,10 @@ struct HermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
     idx::UnitRange{Int}
     nknots::Int
     outputdim::Int
-    function HermiteSimpsonConstraint(mechanism::Mechanism{T}, idx::UnitRange{Int}) where {T}
+    function HermiteSimpsonConstraint(
+        mechanism::Mechanism{T},
+        idx::UnitRange{Int},
+    ) where {T}
         outputdim = num_positions(mechanism) + num_velocities(mechanism)
         new{T}(mechanism, idx, 2, outputdim)
     end
