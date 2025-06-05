@@ -3,7 +3,7 @@ struct Problem{T}
     objectives::AbstractVector{<:AdjacentKnotPointsFunction}
     equality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
     inequality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
-    trajectory::DiscreteTrajectory{T, T}
+    trajectory::DiscreteTrajectory{T,T}
 end
 
 objectives(problem::Problem) = problem.objectives
@@ -17,7 +17,7 @@ trajectory(problem::Problem) = problem.trajectory
 function initialize_trajectory(mechanism::Mechanism{T}, tf::T, Δt::T, nu::Int) where {T}
     ts, qs, vs = simulate_mechanism(mechanism, tf, Δt, zeros(T, 2), zeros(T, 2))
 
-    N  = length(ts)
+    N = length(ts)
     nx = num_positions(mechanism) + num_velocities(mechanism)
     knotpointsize = nx + nu
     num_decision_variables = N * knotpointsize
@@ -26,10 +26,10 @@ function initialize_trajectory(mechanism::Mechanism{T}, tf::T, Δt::T, nu::Int) 
     timesteps = fill(T(Δt), N)
     knotpoints = Vector{T}(undef, num_decision_variables)
 
-    for i in 1:N
+    for i = 1:N
         idx₀ = (i - 1) * knotpointsize + 1
         idx₁ = idx₀ + knotpointsize - 1
-        knotpoint  = [qs[i]; vs[i]; zero_control_vector]
+        knotpoint = [qs[i]; vs[i]; zero_control_vector]
         knotpoints[idx₀:idx₁] = knotpoint
     end
 
@@ -44,7 +44,10 @@ function num_lagrange_multipliers(constraints::AbstractVector{<:AdjacentKnotPoin
     result
 end
 
-function evaluate_objective(objectives::AbstractVector{<:AdjacentKnotPointsFunction}, trajectory::DiscreteTrajectory)
+function evaluate_objective(
+    objectives::AbstractVector{<:AdjacentKnotPointsFunction},
+    trajectory::DiscreteTrajectory,
+)
     result = 0.0
     for objective ∈ objectives
         result += objective(Val(Sum), trajectory)
@@ -52,7 +55,10 @@ function evaluate_objective(objectives::AbstractVector{<:AdjacentKnotPointsFunct
     result
 end
 
-function evaluate_constraints(constraints::AbstractVector{<:AdjacentKnotPointsFunction}, trajectory::DiscreteTrajectory{T}) where {T}
+function evaluate_constraints(
+    constraints::AbstractVector{<:AdjacentKnotPointsFunction},
+    trajectory::DiscreteTrajectory{T},
+) where {T}
     # TODO: preallocate before here
     result = Vector{T}()
     for constraint in constraints
@@ -88,42 +94,42 @@ function solve!(problem::Problem{T}) where {T}
         Jg = jacobian(inequality_constraints(problem), trajectory(problem))
         println("Jg: ", Matrix(Jg))
 
-#        ℒ = build_lagrangian(𝒇, 𝒉, 𝒈, 𝒗, 𝝀)
-#        ▽ₓ𝒇 = gradient(𝒇)
-#        𝑱ₓ𝒉 = jacobian(𝒉)
-#        𝑱ₓ𝒈 = jacobian(𝒈)
-#        # ▽ₓℒ = gradiant(ℒ)
-#        ▽ₓℒ = ▽ₓ𝒇 + 𝑱ₓ𝒉'𝒗 + 𝑱ₓ𝒈'𝝀
-#        ▽²ₓₓℒ = hessian(▽ₓℒ)
-#
-#        """
-#        Solve QP using Clarabel
-#
-#        minimize   1⁄2𝒙ᵀ𝑷𝒙 + 𝒒ᵀ𝒙
-#        subject to  𝑨𝒙 + 𝒔 = 𝒃
-#                         𝒔 ∈ 𝑲
-#        with decision variables 𝒙 ∈ ℝⁿ, 𝒔 ∈ 𝑲 and data matrices 𝑷 = 𝑷ᵀ ≥ 0,
-#        𝒒 ∈ ℝⁿ, 𝑨 ∈ ℝᵐˣⁿ, and b ∈ ℝᵐ. The convext set 𝑲 is a composition of convex cones.
-#        """
-#        𝑷 = sparse(▽²ₓₓℒ)
-#        𝒒 = sparse(▽ₓℒ)
-#        𝑨 = sparse([𝑱ₓ𝒉;
-#                    𝑱ₓ𝒈;
-#                    ])
-#        𝒃 = [-𝒉;
-#             -𝒈]
-#        𝑲 = [
-#            Clarabel.ZeroConeT(length(𝒉)),
-#            Clarabel.NonnegativeConeT(length(𝒈))]
-#
-#        settings = Clarabel.Settings()
-#        solver   = Clarabel.Solver()
-#        Clarabel.setup!(solver, 𝑷, 𝒒, 𝑨, 𝒃, 𝑲, settings)
-#        result = Clarabel.solve!(solver)
-#        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
-#
-#        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
-#        set_𝒗!(solver, 𝒗ₖ₊₁)
-#        set_𝝀!(solver, 𝝀ₖ₊₁)
+        #        ℒ = build_lagrangian(𝒇, 𝒉, 𝒈, 𝒗, 𝝀)
+        #        ▽ₓ𝒇 = gradient(𝒇)
+        #        𝑱ₓ𝒉 = jacobian(𝒉)
+        #        𝑱ₓ𝒈 = jacobian(𝒈)
+        #        # ▽ₓℒ = gradiant(ℒ)
+        #        ▽ₓℒ = ▽ₓ𝒇 + 𝑱ₓ𝒉'𝒗 + 𝑱ₓ𝒈'𝝀
+        #        ▽²ₓₓℒ = hessian(▽ₓℒ)
+        #
+        #        """
+        #        Solve QP using Clarabel
+        #
+        #        minimize   1⁄2𝒙ᵀ𝑷𝒙 + 𝒒ᵀ𝒙
+        #        subject to  𝑨𝒙 + 𝒔 = 𝒃
+        #                         𝒔 ∈ 𝑲
+        #        with decision variables 𝒙 ∈ ℝⁿ, 𝒔 ∈ 𝑲 and data matrices 𝑷 = 𝑷ᵀ ≥ 0,
+        #        𝒒 ∈ ℝⁿ, 𝑨 ∈ ℝᵐˣⁿ, and b ∈ ℝᵐ. The convext set 𝑲 is a composition of convex cones.
+        #        """
+        #        𝑷 = sparse(▽²ₓₓℒ)
+        #        𝒒 = sparse(▽ₓℒ)
+        #        𝑨 = sparse([𝑱ₓ𝒉;
+        #                    𝑱ₓ𝒈;
+        #                    ])
+        #        𝒃 = [-𝒉;
+        #             -𝒈]
+        #        𝑲 = [
+        #            Clarabel.ZeroConeT(length(𝒉)),
+        #            Clarabel.NonnegativeConeT(length(𝒈))]
+        #
+        #        settings = Clarabel.Settings()
+        #        solver   = Clarabel.Solver()
+        #        Clarabel.setup!(solver, 𝑷, 𝒒, 𝑨, 𝒃, 𝑲, settings)
+        #        result = Clarabel.solve!(solver)
+        #        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
+        #
+        #        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
+        #        set_𝒗!(solver, 𝒗ₖ₊₁)
+        #        set_𝝀!(solver, 𝝀ₖ₊₁)
     end
 end

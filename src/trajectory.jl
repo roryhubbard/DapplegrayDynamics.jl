@@ -1,15 +1,17 @@
-struct DiscreteTrajectory{Ts, Tk}
+struct DiscreteTrajectory{Ts,Tk}
     time::AbstractVector{Ts}
     timesteps::AbstractVector{Ts}
     knotpoints::AbstractVector{Tk}
     knotpointsize::Int
     nstates::Int
 
-    function DiscreteTrajectory(time::AbstractVector{Ts},
-                                timesteps::AbstractVector{Ts},
-                                knotpoints::AbstractVector{Tk},
-                                knotpointsize::Int,
-                                nstates::Int) where {Ts, Tk}
+    function DiscreteTrajectory(
+        time::AbstractVector{Ts},
+        timesteps::AbstractVector{Ts},
+        knotpoints::AbstractVector{Tk},
+        knotpointsize::Int,
+        nstates::Int,
+    ) where {Ts,Tk}
         nk = length(knotpoints) ÷ knotpointsize
         @assert length(time) == length(timesteps) == nk "lengths must match"
         new{Ts,Tk}(time, timesteps, knotpoints, knotpointsize, nstates)
@@ -21,7 +23,11 @@ time(trajectory::DiscreteTrajectory) = trajectory.time
 timesteps(trajectory::DiscreteTrajectory) = trajectory.timesteps
 
 knotpoints(trajectory::DiscreteTrajectory) = trajectory.knotpoints
-function knotpoints(trajectory::DiscreteTrajectory, idx::UnitRange{Int}; useview::Bool=true)
+function knotpoints(
+    trajectory::DiscreteTrajectory,
+    idx::UnitRange{Int};
+    useview::Bool = true,
+)
     irange = knotpointindices(trajectory, idx)
     return useview ? view(knotpoints(trajectory), irange) : knotpoints(trajectory)[irange]
 end
@@ -32,8 +38,10 @@ function knotpointindices(trajectory::DiscreteTrajectory, idx::UnitRange{Int})
     idx₁ = last(idx) * ksize
     idx₀:idx₁
 end
-knotpointindices(trajectory::DiscreteTrajectory, idx::Int) = knotpointindices(trajectory, idx:idx)
-knotpointindex(trajectory::DiscreteTrajectory, idx::Int) = (idx - 1) * knotpointsize(trajectory) + 1
+knotpointindices(trajectory::DiscreteTrajectory, idx::Int) =
+    knotpointindices(trajectory, idx:idx)
+knotpointindex(trajectory::DiscreteTrajectory, idx::Int) =
+    (idx - 1) * knotpointsize(trajectory) + 1
 
 knotpointsize(trajectory::DiscreteTrajectory) = trajectory.knotpointsize
 
@@ -43,9 +51,9 @@ function Base.getindex(trajectory::DiscreteTrajectory, idx::UnitRange{Int})
     return DiscreteTrajectory(
         time(trajectory)[idx],
         timesteps(trajectory)[idx],
-        knotpoints(trajectory, idx, useview=false),
+        knotpoints(trajectory, idx, useview = false),
         knotpointsize(trajectory),
-        nstates(trajectory)
+        nstates(trajectory),
     )
 end
 
@@ -53,9 +61,9 @@ function Base.view(trajectory::DiscreteTrajectory, idx::UnitRange{Int})
     return DiscreteTrajectory(
         view(time(trajectory), idx),
         view(timesteps(trajectory), idx),
-        knotpoints(trajectory, idx, useview=true),
+        knotpoints(trajectory, idx, useview = true),
         knotpointsize(trajectory),
-        nstates(trajectory)
+        nstates(trajectory),
     )
 end
 
