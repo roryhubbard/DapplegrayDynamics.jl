@@ -68,8 +68,13 @@ function evaluate_constraints(
     return result
 end
 
-function evaluate_lagrangian(f::T, λ::AbstractVector{T}, g::AbstractVector{T}, v::AbstractVector{T}, h::AbstractVector{T}) where {T}
+function evaluate_lagrangian(f::T, λ::AbstractVector{T}, g::AbstractVector{T},
+    v::AbstractVector{T}, h::AbstractVector{T}) where {T}
     f + λ' * g + v' * h
+end
+
+function ▽Lagrangian(▽f::AbstractVector{T}, λ::AbstractVector{T}, Jg::AbstractMatrix{T}, v::AbstractVector{T}, Jh::AbstractMatrix{T}) where {T}
+    ▽f + Jg' * λ + Jh' * v
 end
 
 function solve!(problem::Problem{T}) where {T}
@@ -80,28 +85,29 @@ function solve!(problem::Problem{T}) where {T}
     println("λ: ", λ)
 
     for k = 1:1
-        fₖ = evaluate_objective(objectives(problem), trajectory(problem))
-        println("fₖ: ", fₖ)
+        f = evaluate_objective(objectives(problem), trajectory(problem))
+        println("f: ", f)
 
-        hₖ = evaluate_constraints(equality_constraints(problem), trajectory(problem))
-        println("hₖ: ", hₖ)
+        h = evaluate_constraints(equality_constraints(problem), trajectory(problem))
+        println("h: ", h)
 
-        gₖ = evaluate_constraints(inequality_constraints(problem), trajectory(problem))
-        println("gₖ: ", hₖ)
+        g = evaluate_constraints(inequality_constraints(problem), trajectory(problem))
+        println("g: ", h)
 
         ▽f = gradient(Val(Sum), objectives(problem), trajectory(problem))
-        println("▽f: ", Matrix(▽f))
+        println("▽f: ", ▽f)
 
         Jh = jacobian(equality_constraints(problem), trajectory(problem))
         println("Jh: ", Jh)
 
         Jg = jacobian(inequality_constraints(problem), trajectory(problem))
-        println("Jg: ", Matrix(Jg))
+        println("Jg: ", Jg)
 
-        L = evaluate_lagrangian(fₖ, λ, gₖ, v, hₖ)
+        L = evaluate_lagrangian(f, λ, g, v, h)
         println("L: ", L)
 
-#        ▽L = ▽Lagrangian(▽f_vstacked, )
+        ▽L = ▽Lagrangian(▽f, λ, Jg, v, Jh)
+        println("▽L: ", ▽L)
 
         #        ▽ₓℒ = ▽ₓ𝒇 + 𝑱ₓ𝒉'𝒗 + 𝑱ₓ𝒈'𝝀
         #        ▽²ₓₓℒ = hessian(▽ₓℒ)

@@ -74,7 +74,7 @@ function gradient(
         current_row_idx += band_height + 1
     end
 
-    sparse(▽f_vstacked)
+    ▽f_vstacked
 end
 
 function gradient(
@@ -83,7 +83,7 @@ function gradient(
     Z::DiscreteTrajectory{T},
 ) where {T}
     ▽f_vstacked = gradient(Val(Stack), funcs, Z)
-    sum(▽f_vstacked, dims=1)
+    vec(sum(▽f_vstacked, dims=1))
 end
 
 # Jacobian
@@ -132,7 +132,7 @@ function jacobian(
         jacobian_singlef!(band, func, Z)
     end
 
-    sparse(J_vstacked)
+    J_vstacked
 end
 
 # Hessian
