@@ -65,7 +65,6 @@ function gradient(
     m = sum(length(indices(func)) for func in funcs)
     n = length(knotpoints(Z))
     ▽f_vstacked = zeros(T, m, n)
-
     for (i, func) ∈ enumerate(funcs)
         band_height = length(indices(func))
         row₀ = (i - 1) * band_height + 1
@@ -73,7 +72,6 @@ function gradient(
         band_view = @view ▽f_vstacked[row₀:row₁, :]
         gradient_singlef!(band_view, func, Z)
     end
-
     ▽f_vstacked
 end
 
@@ -104,7 +102,6 @@ function jacobian_singlef!(
     Z::DiscreteTrajectory,
 ) where {T}
     Jheight = outputdim(func)
-
     for (i, col₀) in enumerate(indices(func))
         row₀ = (i - 1) * Jheight + 1
         row₁ = row₀ + Jheight - 1
@@ -123,7 +120,6 @@ function jacobian(
     m = sum(length(indices(func)) * outputdim(func) for func in funcs)
     n = length(knotpoints(Z))
     J_vstacked = zeros(T, m, n)
-
     for (i, func) ∈ enumerate(funcs)
         band_height = length(indices(func)) * outputdim(func)
         row₀ = (i - 1) * band_height + 1
@@ -131,7 +127,6 @@ function jacobian(
         band = @view J_vstacked[row₀:row₁, :]
         jacobian_singlef!(band, func, Z)
     end
-
     J_vstacked
 end
 
@@ -145,4 +140,31 @@ function hessian_impl!(
     fwrapped(z) =
         func(DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)))
     ForwardDiff.hessian!(H, fwrapped, z)
+end
+
+function hessian_singlef!(
+    H::AbstractMatrix{T},
+    func::AdjacentKnotPointsFunction,
+    Z::DiscreteTrajectory,
+) where {T}
+    for (i, col₀) in enumerate(indices(func))
+        col₁ = col₀ + nknots(func) - 1
+        colrange = knotpointindices(Z, col₀:col₁)
+        z = @view Z[col₀:col₁]
+        # Hessian is square symmetric, colrange = rowrange
+        block = @view H[colrange, colrange]
+        hessian_impl!(block, func, z)
+    end
+end
+
+function hessian(
+    funcs::AbstractVector{<:AdjacentKnotPointsFunction},
+    Z::DiscreteTrajectory{T},
+) where {T}
+    n = length(knotpoints(Z))
+    H = zeros(T, n, n)
+    for (i, func) ∈ enumerate(funcs)
+        hessian_singlef!(H, func, Z)
+    end
+    H
 end

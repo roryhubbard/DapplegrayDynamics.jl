@@ -111,37 +111,37 @@ function solve!(problem::Problem{T}) where {T}
         println("f: ", f)
 
         h = evaluate_constraints(equality_constraints(problem), trajectory(problem))
-        println("h: ", h)
+        println("h $(size(h)): ", h)
 
         g = evaluate_constraints(inequality_constraints(problem), trajectory(problem))
-        println("g: ", h)
+        println("g $(size(g)): ", g)
 
         ▽f = gradient(Val(Sum), objectives(problem), trajectory(problem))
-        println("▽f: ", ▽f)
+        println("▽f $(size(▽f)): ", ▽f)
 
         Jh = jacobian(equality_constraints(problem), trajectory(problem))
-        println("Jh: ", Jh)
+        println("Jh $(size(Jh)): ", Jh)
 
         Jg = jacobian(inequality_constraints(problem), trajectory(problem))
-        println("Jg: ", Jg)
+        println("Jg $(size(Jg)): ", Jg)
 
-#        ▽²f = hessian(objectives(problem), trajectory(problem))
-#        println("▽f: ", ▽f)
+        ▽²f = hessian(objectives(problem), trajectory(problem))
+        println("▽²f $(size(▽²f)): ", ▽²f)
 
         L = evaluate_lagrangian(f, λ, g, v, h)
-        println("L: ", L)
+        println("L $(size(L)): ", L)
 
         ▽L = ▽Lagrangian(▽f, λ, Jg, v, Jh)
-        println("▽L: ", ▽L)
+        println("▽L $(size(▽L)): ", ▽L)
 
         superg = super_gradient(objectives(problem), trajectory(problem))
-        println("sg: ", superg)
+        println("sg $(size(superg)): ", superg)
 
         superJg = super_jacobian(inequality_constraints(problem), trajectory(problem))
-        println("super_Jg: ", superJg)
+        println("superJg $(size(superJg)): ", superJg)
 
-        superjh = super_jacobian(equality_constraints(problem), trajectory(problem))
-        println("super_Jh: ", superjh)
+        superJh = super_jacobian(equality_constraints(problem), trajectory(problem))
+        println("superJh: $(size(superJh))", superJh)
 
 #        ▽²L = ▽²Lagrangian()
 #        println("▽²L: ", ▽²L)
