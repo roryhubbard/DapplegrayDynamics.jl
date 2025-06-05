@@ -68,6 +68,10 @@ function evaluate_constraints(
     return result
 end
 
+function evaluate_lagrangian(f::T, λ::AbstractVector{T}, g::AbstractVector{T}, v::AbstractVector{T}, h::AbstractVector{T}) where {T}
+    f + λ' * g + v' * h
+end
+
 function solve!(problem::Problem{T}) where {T}
     v = zeros(num_lagrange_multipliers(equality_constraints(problem)))
     println("v: ", v)
@@ -75,7 +79,7 @@ function solve!(problem::Problem{T}) where {T}
     λ = zeros(num_lagrange_multipliers(inequality_constraints(problem)))
     println("λ: ", λ)
 
-    for k = 1:1 # TODO: repeat until convergence criteria is met
+    for k = 1:1
         fₖ = evaluate_objective(objectives(problem), trajectory(problem))
         println("fₖ: ", fₖ)
 
@@ -94,7 +98,8 @@ function solve!(problem::Problem{T}) where {T}
         Jg = jacobian(inequality_constraints(problem), trajectory(problem))
         println("Jg: ", Matrix(Jg))
 
-        #        ℒ = build_lagrangian(𝒇, 𝒉, 𝒈, 𝒗, 𝝀)
+        L = evaluate_lagrangian(fₖ, λ, gₖ, v, hₖ)
+        println("L: ", L)
         #        ▽ₓ𝒇 = gradient(𝒇)
         #        𝑱ₓ𝒉 = jacobian(𝒉)
         #        𝑱ₓ𝒈 = jacobian(𝒈)
