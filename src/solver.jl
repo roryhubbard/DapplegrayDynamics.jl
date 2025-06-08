@@ -134,14 +134,14 @@ function solve!(problem::Problem{T}) where {T}
         ▽L = ▽Lagrangian(▽f, λ, Jg, v, Jh)
         println("▽L $(size(▽L)): ", ▽L)
 
-        superg = super_gradient(objectives(problem), trajectory(problem))
-        println("sg $(size(superg)): ", superg)
-
-        superJg = super_jacobian(inequality_constraints(problem), trajectory(problem))
-        println("superJg $(size(superJg)): ", superJg)
-
-        superJh = super_jacobian(equality_constraints(problem), trajectory(problem))
-        println("superJh: $(size(superJh))", superJh)
+#        superg = super_gradient(objectives(problem), trajectory(problem))
+#        println("sg $(size(superg)): ", superg)
+#
+#        superJg = super_jacobian(inequality_constraints(problem), trajectory(problem))
+#        println("superJg $(size(superJg)): ", superJg)
+#
+#        superJh = super_jacobian(equality_constraints(problem), trajectory(problem))
+#        println("superJh: $(size(superJh))", superJh)
 
 #        ▽²L = ▽²Lagrangian()
 #        println("▽²L: ", ▽²L)
