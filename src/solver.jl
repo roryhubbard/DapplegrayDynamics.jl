@@ -125,14 +125,20 @@ function solve!(problem::Problem{T}) where {T}
         Jg = jacobian(inequality_constraints(problem), trajectory(problem))
         println("Jg $(size(Jg)): ", Jg)
 
-        ▽²f = hessian(objectives(problem), trajectory(problem))
-        println("▽²f $(size(▽²f)): ", ▽²f)
-
         L = evaluate_lagrangian(f, λ, g, v, h)
         println("L $(size(L)): ", L)
 
         ▽L = ▽Lagrangian(▽f, λ, Jg, v, Jh)
         println("▽L $(size(▽L)): ", ▽L)
+
+        ▽²f = hessian(objectives(problem), trajectory(problem))
+        println("▽²f $(size(▽²f)): ", ▽²f)
+
+        ▽²h = vector_hessian(equality_constraints(problem), trajectory(problem))
+        println("▽²h $(size(▽²h)): ", ▽²h)
+
+        ▽²g = vector_hessian(inequality_constraints(problem), trajectory(problem))
+        println("▽²g $(size(▽²g)): ", ▽²g)
 
 #        superg = super_gradient(objectives(problem), trajectory(problem))
 #        println("sg $(size(superg)): ", superg)

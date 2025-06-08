@@ -9,6 +9,11 @@ abstract type ResultAccumulationMethod end
 struct Sum <: ResultAccumulationMethod end
 struct Stack <: ResultAccumulationMethod end
 
+function unary_func(func::AdjacentKnotPointsFunction, Z::DiscreteTrajectory)
+    # Rest assured, no copying happening here
+    z -> func(DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)))
+end
+
 # Evaluation
 function (func::AdjacentKnotPointsFunction)(::Val{Sum}, Z::DiscreteTrajectory{T}) where {T}
     result = zero(T)
@@ -37,10 +42,8 @@ function gradient_impl!(
     Z::DiscreteTrajectory,
 ) where {T}
     z = knotpoints(Z)
-    # Rest assured, no copying happening here
-    fwrapped(z) =
-        func(DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)))
-    ForwardDiff.gradient!(▽f, fwrapped, z)
+    f = unary_func(func, Z)
+    ForwardDiff.gradient!(▽f, f, z)
 end
 
 function gradient_singlef!(
@@ -91,9 +94,8 @@ function jacobian_impl!(
     Z::DiscreteTrajectory,
 ) where {T}
     z = knotpoints(Z)
-    fwrapped(z) =
-        func(DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)))
-    ForwardDiff.jacobian!(J, fwrapped, z)
+    f = unary_func(func, Z)
+    ForwardDiff.jacobian!(J, f, z)
 end
 
 function jacobian_singlef!(
@@ -137,9 +139,8 @@ function hessian_impl!(
     Z::DiscreteTrajectory,
 ) where {T}
     z = knotpoints(Z)
-    fwrapped(z) =
-        func(DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)))
-    ForwardDiff.hessian!(H, fwrapped, z)
+    f = unary_func(func, Z)
+    ForwardDiff.hessian!(H, f, z)
 end
 
 function hessian_singlef!(
@@ -164,7 +165,55 @@ function hessian(
     n = length(knotpoints(Z))
     H = zeros(T, n, n)
     for (i, func) ∈ enumerate(funcs)
+        # TODO: we're just overwriting the same Hessian matrix for every function. Fix this!
         hessian_singlef!(H, func, Z)
+    end
+    H
+end
+
+function vector_hessian_impl!(H::AbstractMatrix{T}, J::AbstractMatrix{T}, func::AdjacentKnotPointsFunction, Z::DiscreteTrajectory) where {T}
+    z = knotpoints(Z)
+    function inner_jacobian!(z::AbstractVector{T}) where T
+        z = knotpoints(Z)
+        f = unary_func(func, Z)
+        ForwardDiff.jacobian!(J, f, z)
+        vec(J)  # does not copy
+    end
+    ForwardDiff.jacobian!(H, inner_jacobian!, z)
+end
+
+function vector_hessian_singlef!(
+    H::AbstractMatrix{T},
+    J::AbstractMatrix{T},
+    func::AdjacentKnotPointsFunction,
+    Z::DiscreteTrajectory,
+) where {T}
+    for (i, col₀) in enumerate(indices(func))
+        col₁ = col₀ + nknots(func) - 1
+        colrange = knotpointindices(Z, col₀:col₁)
+        z = @view Z[col₀:col₁]
+
+        band_height = outputdim(func) * length(colrange)
+        row₀ = (i - 1) * band_height + 1
+        row₁ = row₀ + band_height - 1
+
+        block = @view H[row₀:row₁, colrange]
+        vector_hessian_impl!(block, J, func, z)
+    end
+end
+
+function vector_hessian(
+    funcs::AbstractVector{<:AdjacentKnotPointsFunction},
+    Z::DiscreteTrajectory{T},
+) where {T}
+    n = length(knotpoints(Z))
+    m = sum(length(indices(func)) * outputdim(func) * n for func in funcs)
+    H = zeros(T, m, n)
+    for (i, func) ∈ enumerate(funcs)
+        Jheight = outputdim(func)
+        Jwidth = nknots(func) * knotpointsize(Z)
+        J = zeros(T, Jheight, Jwidth)
+        vector_hessian_singlef!(H, J, func, Z)
     end
     H
 end
