@@ -1,16 +1,16 @@
 struct Problem{T}
     mechanism::Mechanism{T}
     objectives::AbstractVector{<:AdjacentKnotPointsFunction}
-    equality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
     inequality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
+    equality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
     trajectory::DiscreteTrajectory{T,T}
 end
 
 objectives(problem::Problem) = problem.objectives
 
-equality_constraints(problem::Problem) = problem.equality_constraints
-
 inequality_constraints(problem::Problem) = problem.inequality_constraints
+
+equality_constraints(problem::Problem) = problem.equality_constraints
 
 trajectory(problem::Problem) = problem.trajectory
 
@@ -94,78 +94,50 @@ function super_jacobian(
     ForwardDiff.jacobian(fwrapped, z)
 end
 
-function evaluate_lagrangian(
-    f::T,
-    λ::AbstractVector{T},
-    g::AbstractVector{T},
-    v::AbstractVector{T},
-    h::AbstractVector{T},
-) where {T}
-    f + λ' * g + v' * h
-end
-
-function ▽Lagrangian(
-    ▽f::AbstractVector{T},
-    λ::AbstractVector{T},
-    Jg::AbstractMatrix{T},
-    v::AbstractVector{T},
-    Jh::AbstractMatrix{T},
-) where {T}
-    ▽f + Jg' * λ + Jh' * v
-end
-
 function solve!(problem::Problem{T}) where {T}
-    v = zeros(num_lagrange_multipliers(equality_constraints(problem)))
-    println("v: ", v)
-
     λ = zeros(num_lagrange_multipliers(inequality_constraints(problem)))
     println("λ: ", λ)
+
+    v = zeros(num_lagrange_multipliers(equality_constraints(problem)))
+    println("v: ", v)
 
     for k = 1:1
         f = evaluate_objective(objectives(problem), trajectory(problem))
         println("f: ", f)
 
-        h = evaluate_constraints(equality_constraints(problem), trajectory(problem))
-        println("h $(size(h)): ", h)
-
         g = evaluate_constraints(inequality_constraints(problem), trajectory(problem))
         println("g $(size(g)): ", g)
+
+        h = evaluate_constraints(equality_constraints(problem), trajectory(problem))
+        println("h $(size(h)): ", h)
 
         ▽f = gradient(Val(Sum), objectives(problem), trajectory(problem))
         println("▽f $(size(▽f)): ", ▽f)
 
-        Jh = jacobian(equality_constraints(problem), trajectory(problem))
-        println("Jh $(size(Jh)): ", Jh)
-
         Jg = jacobian(inequality_constraints(problem), trajectory(problem))
         println("Jg $(size(Jg)): ", Jg)
 
-        L = evaluate_lagrangian(f, λ, g, v, h)
+        Jh = jacobian(equality_constraints(problem), trajectory(problem))
+        println("Jh $(size(Jh)): ", Jh)
+
+        L = f + λ' * g + v' * h
         println("L $(size(L)): ", L)
 
-        ▽L = ▽Lagrangian(▽f, λ, Jg, v, Jh)
+        ▽L = ▽f + Jg' * λ + Jh' * v
         println("▽L $(size(▽L)): ", ▽L)
 
         ▽²f = hessian(objectives(problem), trajectory(problem))
         println("▽²f $(size(▽²f)): ", ▽²f)
 
-        ▽²h = vector_hessian(equality_constraints(problem), trajectory(problem), v)
-        println("▽²h $(size(▽²h)): ", ▽²h)
-
         ▽²g = vector_hessian(inequality_constraints(problem), trajectory(problem), λ)
         println("▽²g $(size(▽²g)): ", ▽²g)
 
-        #        superg = super_gradient(objectives(problem), trajectory(problem))
-        #        println("sg $(size(superg)): ", superg)
-        #
-        #        superJg = super_jacobian(inequality_constraints(problem), trajectory(problem))
-        #        println("superJg $(size(superJg)): ", superJg)
-        #
-        #        superJh = super_jacobian(equality_constraints(problem), trajectory(problem))
-        #        println("superJh: $(size(superJh))", superJh)
+        ▽²h = vector_hessian(equality_constraints(problem), trajectory(problem), v)
+        println("▽²h $(size(▽²h)): ", ▽²h)
 
-        #        ▽²L = ▽²Lagrangian()
-        #        println("▽²L: ", ▽²L)
+        ▽²L = ▽²f + ▽²g + ▽²h
+        println("▽²L: ", ▽²L)
+
         #        """
         #        Solve QP using Clarabel
         #
