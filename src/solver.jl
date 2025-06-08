@@ -149,8 +149,10 @@ function solve!(problem::Problem{T}) where {T}
         """
         P = sparse(▽²L)
         q = ▽L
-        A = sparse([-Jg;
-                    -Jh;
+        Jg .*= -1
+        Jh .*= -1
+        A = sparse([Jg;
+                    Jh;
                     ])
         b = [g;
              h]
