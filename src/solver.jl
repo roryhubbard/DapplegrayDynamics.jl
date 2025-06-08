@@ -138,34 +138,41 @@ function solve!(problem::Problem{T}) where {T}
         ▽²L = ▽²f + ▽²g + ▽²h
         println("▽²L: ", ▽²L)
 
-        #        """
-        #        Solve QP using Clarabel
-        #
-        #        minimize   1⁄2𝒙ᵀ𝑷𝒙 + 𝒒ᵀ𝒙
-        #        subject to  𝑨𝒙 + 𝒔 = 𝒃
-        #                         𝒔 ∈ 𝑲
-        #        with decision variables 𝒙 ∈ ℝⁿ, 𝒔 ∈ 𝑲 and data matrices 𝑷 = 𝑷ᵀ ≥ 0,
-        #        𝒒 ∈ ℝⁿ, 𝑨 ∈ ℝᵐˣⁿ, and b ∈ ℝᵐ. The convext set 𝑲 is a composition of convex cones.
-        #        """
-        #        𝑷 = sparse(▽²ₓₓℒ)
-        #        𝒒 = sparse(▽ₓℒ)
-        #        𝑨 = sparse([𝑱ₓ𝒉;
-        #                    𝑱ₓ𝒈;
-        #                    ])
-        #        𝒃 = [-𝒉;
-        #             -𝒈]
-        #        𝑲 = [
-        #            Clarabel.ZeroConeT(length(𝒉)),
-        #            Clarabel.NonnegativeConeT(length(𝒈))]
-        #
-        #        settings = Clarabel.Settings()
-        #        solver   = Clarabel.Solver()
-        #        Clarabel.setup!(solver, 𝑷, 𝒒, 𝑨, 𝒃, 𝑲, settings)
-        #        result = Clarabel.solve!(solver)
-        #        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
-        #
-        #        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
-        #        set_𝒗!(solver, 𝒗ₖ₊₁)
-        #        set_𝝀!(solver, 𝝀ₖ₊₁)
+        """
+        Solve QP using Clarabel
+
+        minimize   1⁄2𝒙ᵀ𝑷𝒙 + 𝒒ᵀ𝒙
+        subject to  𝑨𝒙 + 𝒔 = 𝒃
+                         𝒔 ∈ 𝑲
+        with decision variables 𝒙 ∈ ℝⁿ, 𝒔 ∈ 𝑲 and data matrices 𝑷 = 𝑷ᵀ ≥ 0,
+        𝒒 ∈ ℝⁿ, 𝑨 ∈ ℝᵐˣⁿ, and b ∈ ℝᵐ. The convext set 𝑲 is a composition of convex cones.
+        """
+        P = sparse(▽²L)
+        q = ▽L
+        A = sparse([-Jg;
+                    -Jh;
+                    ])
+        b = [g;
+             h]
+        K = [
+            Clarabel.ZeroConeT(length(h)),
+            Clarabel.NonnegativeConeT(length(g))]
+
+        println("P $(size(P)): ", P)
+        println("q $(size(q)): ", q)
+        println("A $(size(A)): ", A)
+        println("b $(size(b)): ", b)
+        println("K $(size(K)): ", K)
+
+        settings = Clarabel.Settings()
+        solver   = Clarabel.Solver()
+        Clarabel.setup!(solver, P, q, A, b, K, settings)
+        result = Clarabel.solve!(solver)
+        println("QP result ", result)
+#        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
+#
+#        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
+#        set_𝒗!(solver, 𝒗ₖ₊₁)
+#        set_𝝀!(solver, 𝝀ₖ₊₁)
     end
 end
