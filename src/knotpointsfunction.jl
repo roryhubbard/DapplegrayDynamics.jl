@@ -84,7 +84,7 @@ function gradient(
     Z::DiscreteTrajectory{T},
 ) where {T}
     ▽f_vstacked = gradient(Val(Stack), funcs, Z)
-    vec(sum(▽f_vstacked, dims=1))
+    vec(sum(▽f_vstacked, dims = 1))
 end
 
 # Jacobian
@@ -171,9 +171,14 @@ function hessian(
     H
 end
 
-function vector_hessian_impl!(H::AbstractMatrix{T}, J::AbstractMatrix{T}, func::AdjacentKnotPointsFunction, Z::DiscreteTrajectory) where {T}
+function vector_hessian_impl!(
+    H::AbstractMatrix{T},
+    J::AbstractMatrix{T},
+    func::AdjacentKnotPointsFunction,
+    Z::DiscreteTrajectory,
+) where {T}
     z = knotpoints(Z)
-    function inner_jacobian!(z::AbstractVector{T}) where T
+    function inner_jacobian!(z::AbstractVector{T}) where {T}
         z = knotpoints(Z)
         f = unary_func(func, Z)
         ForwardDiff.jacobian!(J, f, z)

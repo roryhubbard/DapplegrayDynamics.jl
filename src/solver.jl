@@ -61,8 +61,10 @@ function super_gradient(
 )
     z = knotpoints(Z)
     # Rest assured, no copying happening here
-    fwrapped(z) =
-        evaluate_objective(objectives, DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)))
+    fwrapped(z) = evaluate_objective(
+        objectives,
+        DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)),
+    )
     ForwardDiff.gradient(fwrapped, z)
 end
 
@@ -85,17 +87,30 @@ function super_jacobian(
 ) where {Ts,Tk}
     z = knotpoints(Z)
     # Rest assured, no copying happening here
-    fwrapped(z) =
-        evaluate_constraints(constraints, DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)))
+    fwrapped(z) = evaluate_constraints(
+        constraints,
+        DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)),
+    )
     ForwardDiff.jacobian(fwrapped, z)
 end
 
-function evaluate_lagrangian(f::T, λ::AbstractVector{T}, g::AbstractVector{T},
-    v::AbstractVector{T}, h::AbstractVector{T}) where {T}
+function evaluate_lagrangian(
+    f::T,
+    λ::AbstractVector{T},
+    g::AbstractVector{T},
+    v::AbstractVector{T},
+    h::AbstractVector{T},
+) where {T}
     f + λ' * g + v' * h
 end
 
-function ▽Lagrangian(▽f::AbstractVector{T}, λ::AbstractVector{T}, Jg::AbstractMatrix{T}, v::AbstractVector{T}, Jh::AbstractMatrix{T}) where {T}
+function ▽Lagrangian(
+    ▽f::AbstractVector{T},
+    λ::AbstractVector{T},
+    Jg::AbstractMatrix{T},
+    v::AbstractVector{T},
+    Jh::AbstractMatrix{T},
+) where {T}
     ▽f + Jg' * λ + Jh' * v
 end
 
@@ -140,17 +155,17 @@ function solve!(problem::Problem{T}) where {T}
         ▽²g = vector_hessian(inequality_constraints(problem), trajectory(problem))
         println("▽²g $(size(▽²g)): ", ▽²g)
 
-#        superg = super_gradient(objectives(problem), trajectory(problem))
-#        println("sg $(size(superg)): ", superg)
-#
-#        superJg = super_jacobian(inequality_constraints(problem), trajectory(problem))
-#        println("superJg $(size(superJg)): ", superJg)
-#
-#        superJh = super_jacobian(equality_constraints(problem), trajectory(problem))
-#        println("superJh: $(size(superJh))", superJh)
+        #        superg = super_gradient(objectives(problem), trajectory(problem))
+        #        println("sg $(size(superg)): ", superg)
+        #
+        #        superJg = super_jacobian(inequality_constraints(problem), trajectory(problem))
+        #        println("superJg $(size(superJg)): ", superJg)
+        #
+        #        superJh = super_jacobian(equality_constraints(problem), trajectory(problem))
+        #        println("superJh: $(size(superJh))", superJh)
 
-#        ▽²L = ▽²Lagrangian()
-#        println("▽²L: ", ▽²L)
+        #        ▽²L = ▽²Lagrangian()
+        #        println("▽²L: ", ▽²L)
         #        """
         #        Solve QP using Clarabel
         #
