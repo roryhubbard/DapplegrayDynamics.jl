@@ -220,5 +220,6 @@ function vector_hessian(
         J = zeros(T, Jheight, Jwidth)
         vector_hessian_singlef!(H, J, func, Z)
     end
-    reduce(+, eachslice(reshape(H, n, n, :), dims=3))
+    ∑H = zeros(T, n, n)
+    sum!(∑H, reshape(H', n, n, :))
 end
