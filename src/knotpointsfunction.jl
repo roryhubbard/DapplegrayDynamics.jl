@@ -210,16 +210,29 @@ end
 function vector_hessian(
     funcs::AbstractVector{<:AdjacentKnotPointsFunction},
     Z::DiscreteTrajectory{T},
+    λ::AbstractVector{T},
 ) where {T}
     n = length(knotpoints(Z))
     m = sum(length(indices(func)) * outputdim(func) * n for func in funcs)
     H = zeros(T, m, n)
+
     for (i, func) ∈ enumerate(funcs)
         Jheight = outputdim(func)
         Jwidth = nknots(func) * knotpointsize(Z)
         J = zeros(T, Jheight, Jwidth)
         vector_hessian_singlef!(H, J, func, Z)
     end
+
     ∑H = zeros(T, n, n)
-    sum!(∑H, reshape(H', n, n, :))
+    H3 = reshape(H', n, n, :)
+
+    @assert length(λ) == size(H3, 3) "length of dual variable vector $length(λ)) ≠ hessian stack depth $(size(H3, 3))"
+
+    @inbounds for k in 1:length(λ)
+        sliceₖ = @view H3[:, :, k]
+        sliceₖ .*= λ[k]
+        ∑H .+= sliceₖ
+    end
+
+    ∑H
 end

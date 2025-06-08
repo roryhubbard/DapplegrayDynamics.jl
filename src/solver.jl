@@ -149,10 +149,10 @@ function solve!(problem::Problem{T}) where {T}
         ▽²f = hessian(objectives(problem), trajectory(problem))
         println("▽²f $(size(▽²f)): ", ▽²f)
 
-        ▽²h = vector_hessian(equality_constraints(problem), trajectory(problem))
+        ▽²h = vector_hessian(equality_constraints(problem), trajectory(problem), v)
         println("▽²h $(size(▽²h)): ", ▽²h)
 
-        ▽²g = vector_hessian(inequality_constraints(problem), trajectory(problem))
+        ▽²g = vector_hessian(inequality_constraints(problem), trajectory(problem), λ)
         println("▽²g $(size(▽²g)): ", ▽²g)
 
         #        superg = super_gradient(objectives(problem), trajectory(problem))
