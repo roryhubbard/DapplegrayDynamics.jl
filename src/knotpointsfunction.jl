@@ -228,7 +228,7 @@ function vector_hessian(
 
     @assert length(λ) == size(H3, 3) "length of dual variable vector $length(λ)) ≠ hessian stack depth $(size(H3, 3))"
 
-    @inbounds for k in 1:length(λ)
+    @inbounds for k = 1:length(λ)
         sliceₖ = @view H3[:, :, k]
         sliceₖ .*= λ[k]
         ∑H .+= sliceₖ

@@ -105,19 +105,25 @@ subject to  𝑨𝒙 + 𝒔 = 𝒃
 with decision variables 𝒙 ∈ ℝⁿ, 𝒔 ∈ 𝑲 and data matrices 𝑷 = 𝑷ᵀ ≥ 0,
 𝒒 ∈ ℝⁿ, 𝑨 ∈ ℝᵐˣⁿ, and b ∈ ℝᵐ. The convext set 𝑲 is a composition of convex cones.
 """
-function solve_qp(g::AbstractVector{T}, Jg::AbstractMatrix{T},
-    h::AbstractVector{T}, Jh::AbstractMatrix{T}, ▽L::AbstractVector{T},
-    ▽²L::AbstractMatrix{T}) where {T}
+function solve_qp(
+    g::AbstractVector{T},
+    Jg::AbstractMatrix{T},
+    h::AbstractVector{T},
+    Jh::AbstractMatrix{T},
+    ▽L::AbstractVector{T},
+    ▽²L::AbstractMatrix{T},
+) where {T}
     P = sparse(▽²L)
     q = ▽L
-    A = sparse([Jg;
-                Jh;
-                ])
-    b = [g;
-         h]
-    K = [
-        Clarabel.ZeroConeT(length(h)),
-        Clarabel.NonnegativeConeT(length(g))]
+    A = sparse([
+        Jg;
+        Jh;
+    ])
+    b = [
+        g;
+        h
+    ]
+    K = [Clarabel.ZeroConeT(length(h)), Clarabel.NonnegativeConeT(length(g))]
 
     println("P $(size(P)): ", P)
     println("q $(size(q)): ", q)
@@ -126,7 +132,7 @@ function solve_qp(g::AbstractVector{T}, Jg::AbstractMatrix{T},
     println("K $(size(K)): ", K)
 
     settings = Clarabel.Settings()
-    solver   = Clarabel.Solver()
+    solver = Clarabel.Solver()
     Clarabel.setup!(solver, P, q, A, b, K, settings)
     Clarabel.solve!(solver)
 end
@@ -179,10 +185,10 @@ function solve!(problem::Problem{T}) where {T}
         negate!(Jh)
         qp_solution = solve_qp(g, Jg, h, Jh, ▽L, ▽²L)
         println("QP solution ", qp_solution)
-#        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
-#
-#        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
-#        set_𝒗!(solver, 𝒗ₖ₊₁)
-#        set_𝝀!(solver, 𝝀ₖ₊₁)
+
+        #        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
+        #        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
+        #        set_𝒗!(solver, 𝒗ₖ₊₁)
+        #        set_𝝀!(solver, 𝝀ₖ₊₁)
     end
 end
