@@ -44,10 +44,10 @@ function conic_upperbound_Ab(upperbound::AbstractVector{T}, knotpointsize::Int) 
 end
 
 function control_bound_constraint(
-    upperbound::Union{AbstractVector{T},Nothing},
-    lowerbound::Union{AbstractVector{T},Nothing},
     knotpointsize::Int,
     idx::UnitRange{Int},
+    upperbound::Union{AbstractVector{T},Nothing} = nothing,
+    lowerbound::Union{AbstractVector{T},Nothing} = nothing,
 )::ConicConstraint{T} where {T}
     if isnothing(upperbound) && isnothing(lowerbound)
         throw(ArgumentError("At least one of upperbound or lowerbound must be provided."))
@@ -75,12 +75,12 @@ function control_bound_constraint(
 end
 
 function control_bound_constraint(
-    upperbound::Union{AbstractVector{T},Nothing},
-    lowerbound::Union{AbstractVector{T},Nothing},
     knotpointsize::Int,
     idx::Int,
+    upperbound::Union{AbstractVector{T},Nothing} = nothing,
+    lowerbound::Union{AbstractVector{T},Nothing} = nothing,
 )::ConicConstraint{T} where {T}
-    control_bound_constraint(upperbound, lowerbound, knotpointsize, idx:idx)
+    control_bound_constraint(knotpointsize, idx:idx, upperbound, lowerbound)
 end
 
 function state_equality_constraint(
