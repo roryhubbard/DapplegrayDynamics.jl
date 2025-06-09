@@ -3,7 +3,7 @@ struct SQPSolver{T}
     f::AbstractVector{<:AdjacentKnotPointsFunction}
     g::AbstractVector{<:AdjacentKnotPointsFunction}
     h::AbstractVector{<:AdjacentKnotPointsFunction}
-    x::DiscreteTrajectory{T,T}
+    x::DiscreteTrajectory{T}
     λ::AbstractVector{T}
     v::AbstractVector{T}
 
@@ -42,7 +42,7 @@ inequality_duals(solver::SQPSolver) = solver.λ
 
 equality_duals(solver::SQPSolver) = solver.v
 
-solution(solver::SQPSolver) = solver.x
+primal(solver::SQPSolver) = solver.x
 
 function initialize_trajectory(mechanism::Mechanism{T}, tf::T, Δt::T, nu::Int) where {T}
     ts, qs, vs = simulate_mechanism(mechanism, tf, Δt, zeros(T, 2), zeros(T, 2))
@@ -164,7 +164,7 @@ end
 
 function solve!(solver::SQPSolver{T}) where {T}
     for k = 1:1
-        x = solution(solver)
+        x = primal(solver)
         println("primal x: ", x)
 
         λ = inequality_duals(solver)
@@ -173,22 +173,22 @@ function solve!(solver::SQPSolver{T}) where {T}
         v = equality_duals(solver)
         println("dual v: ", v)
 
-        f = evaluate_objective(objectives(solver), solution(solver))
+        f = evaluate_objective(objectives(solver), primal(solver))
         println("f: ", f)
 
-        g = evaluate_constraints(inequality_constraints(solver), solution(solver))
+        g = evaluate_constraints(inequality_constraints(solver), primal(solver))
         println("g $(size(g)): ", g)
 
-        h = evaluate_constraints(equality_constraints(solver), solution(solver))
+        h = evaluate_constraints(equality_constraints(solver), primal(solver))
         println("h $(size(h)): ", h)
 
-        ▽f = gradient(Val(Sum), objectives(solver), solution(solver))
+        ▽f = gradient(Val(Sum), objectives(solver), primal(solver))
         println("▽f $(size(▽f)): ", ▽f)
 
-        Jg = jacobian(inequality_constraints(solver), solution(solver))
+        Jg = jacobian(inequality_constraints(solver), primal(solver))
         println("Jg $(size(Jg)): ", Jg)
 
-        Jh = jacobian(equality_constraints(solver), solution(solver))
+        Jh = jacobian(equality_constraints(solver), primal(solver))
         println("Jh $(size(Jh)): ", Jh)
 
         L = f + λ' * g + v' * h
@@ -197,13 +197,13 @@ function solve!(solver::SQPSolver{T}) where {T}
         ▽L = ▽f + Jg' * λ + Jh' * v
         println("▽L $(size(▽L)): ", ▽L)
 
-        ▽²f = hessian(objectives(solver), solution(solver))
+        ▽²f = hessian(objectives(solver), primal(solver))
         println("▽²f $(size(▽²f)): ", ▽²f)
 
-        ▽²g = vector_hessian(inequality_constraints(solver), solution(solver), λ)
+        ▽²g = vector_hessian(inequality_constraints(solver), primal(solver), λ)
         println("▽²g $(size(▽²g)): ", ▽²g)
 
-        ▽²h = vector_hessian(equality_constraints(solver), solution(solver), v)
+        ▽²h = vector_hessian(equality_constraints(solver), primal(solver), v)
         println("▽²h $(size(▽²h)): ", ▽²h)
 
         ▽²L = ▽²f + ▽²g + ▽²h
@@ -214,6 +214,11 @@ function solve!(solver::SQPSolver{T}) where {T}
         pₖ, lₖ = solve_qp(g, Jg, h, Jh, ▽L, ▽²L)
         println("QP primal pₖ $(length(pₖ)): ", pₖ)
         println("QP dual lₖ $(length(lₖ)): ", lₖ)
+
+        # solution step
+        knotpoints(primal(solver)) .+= pₖ
+        inequality_duals(solver) .+= @view lₖ[1:length(g)]
+        equality_duals(solver) .+= @view lₖ[length(g)+1:end]
 
         #        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
         #        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
