@@ -234,5 +234,5 @@ function vector_hessian(
         ∑H .+= sliceₖ
     end
 
-    ∑H
+    Symmetric(∑H)
 end

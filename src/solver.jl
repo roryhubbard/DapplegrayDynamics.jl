@@ -1,18 +1,48 @@
-struct Problem{T}
+struct SQPSolver{T}
     mechanism::Mechanism{T}
-    objectives::AbstractVector{<:AdjacentKnotPointsFunction}
-    inequality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
-    equality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
-    trajectory::DiscreteTrajectory{T,T}
+    f::AbstractVector{<:AdjacentKnotPointsFunction}
+    g::AbstractVector{<:AdjacentKnotPointsFunction}
+    h::AbstractVector{<:AdjacentKnotPointsFunction}
+    x::DiscreteTrajectory{T}
+    λ::AbstractVector{T}
+    v::AbstractVector{T}
+
+    function SQPSolver(
+        mechanism::Mechanism{T},
+        f::AbstractVector{<:AdjacentKnotPointsFunction},
+        g::AbstractVector{<:AdjacentKnotPointsFunction},
+        h::AbstractVector{<:AdjacentKnotPointsFunction},
+        x::DiscreteTrajectory{T,T},
+        λ::Union{AbstractVector{T},Nothing} = nothing,
+        v::Union{AbstractVector{T},Nothing} = nothing,
+    ) where {T}
+        if isnothing(λ)
+            λ = zeros(T, num_lagrange_multipliers(g))
+        end
+        if isnothing(v)
+            v = zeros(T, num_lagrange_multipliers(h))
+        end
+
+        ng = num_lagrange_multipliers(g)
+        @assert length(λ) == ng "inequality constraint lagrange multipliers vector must have length $(ng) but has $(length(λ))"
+        nh = num_lagrange_multipliers(h)
+        @assert length(v) == nh "equality constraint lagrange multipliers vector must have length $(nh) but has $(length(v))"
+
+        new{T}(mechanism, f, g, h, x, λ, v)
+    end
 end
 
-objectives(problem::Problem) = problem.objectives
+objectives(solver::SQPSolver) = solver.f
 
-inequality_constraints(problem::Problem) = problem.inequality_constraints
+inequality_constraints(solver::SQPSolver) = solver.g
 
-equality_constraints(problem::Problem) = problem.equality_constraints
+equality_constraints(solver::SQPSolver) = solver.h
 
-trajectory(problem::Problem) = problem.trajectory
+inequality_duals(solver::SQPSolver) = solver.λ
+
+equality_duals(solver::SQPSolver) = solver.v
+
+primal(solver::SQPSolver) = solver.x
 
 function initialize_trajectory(mechanism::Mechanism{T}, tf::T, Δt::T, nu::Int) where {T}
     ts, qs, vs = simulate_mechanism(mechanism, tf, Δt, zeros(T, 2), zeros(T, 2))
@@ -37,22 +67,14 @@ function initialize_trajectory(mechanism::Mechanism{T}, tf::T, Δt::T, nu::Int) 
 end
 
 function num_lagrange_multipliers(constraints::AbstractVector{<:AdjacentKnotPointsFunction})
-    result = 0
-    for constraint ∈ constraints
-        result += outputdim(constraint) * length(indices(constraint))
-    end
-    result
+    sum(outputdim(c) * length(indices(c)) for c in constraints)
 end
 
 function evaluate_objective(
     objectives::AbstractVector{<:AdjacentKnotPointsFunction},
     Z::DiscreteTrajectory,
 )
-    result = 0.0
-    for objective ∈ objectives
-        result += objective(Val(Sum), Z)
-    end
-    result
+    sum(objective(Val(Sum), Z) for objective in objectives)
 end
 
 function super_gradient(
@@ -132,35 +154,41 @@ function solve_qp(
     println("K $(size(K)): ", K)
 
     settings = Clarabel.Settings()
-    solver = Clarabel.Solver()
-    Clarabel.setup!(solver, P, q, A, b, K, settings)
-    Clarabel.solve!(solver)
+    solver = Clarabel.Solver(P, q, A, b, K, settings)
+    solution = Clarabel.solve!(solver)
+    # solution.x → primal solution
+    # solution.z → dual solution
+    # solution.s → slacks
+    (solution.x, solution.z)
 end
 
-function solve!(problem::Problem{T}) where {T}
-    λ = zeros(num_lagrange_multipliers(inequality_constraints(problem)))
-    println("λ: ", λ)
-
-    v = zeros(num_lagrange_multipliers(equality_constraints(problem)))
-    println("v: ", v)
-
+function solve!(solver::SQPSolver{T}) where {T}
     for k = 1:1
-        f = evaluate_objective(objectives(problem), trajectory(problem))
+        x = primal(solver)
+        println("primal x: ", x)
+
+        λ = inequality_duals(solver)
+        println("dual λ: ", λ)
+
+        v = equality_duals(solver)
+        println("dual v: ", v)
+
+        f = evaluate_objective(objectives(solver), primal(solver))
         println("f: ", f)
 
-        g = evaluate_constraints(inequality_constraints(problem), trajectory(problem))
+        g = evaluate_constraints(inequality_constraints(solver), primal(solver))
         println("g $(size(g)): ", g)
 
-        h = evaluate_constraints(equality_constraints(problem), trajectory(problem))
+        h = evaluate_constraints(equality_constraints(solver), primal(solver))
         println("h $(size(h)): ", h)
 
-        ▽f = gradient(Val(Sum), objectives(problem), trajectory(problem))
+        ▽f = gradient(Val(Sum), objectives(solver), primal(solver))
         println("▽f $(size(▽f)): ", ▽f)
 
-        Jg = jacobian(inequality_constraints(problem), trajectory(problem))
+        Jg = jacobian(inequality_constraints(solver), primal(solver))
         println("Jg $(size(Jg)): ", Jg)
 
-        Jh = jacobian(equality_constraints(problem), trajectory(problem))
+        Jh = jacobian(equality_constraints(solver), primal(solver))
         println("Jh $(size(Jh)): ", Jh)
 
         L = f + λ' * g + v' * h
@@ -169,13 +197,13 @@ function solve!(problem::Problem{T}) where {T}
         ▽L = ▽f + Jg' * λ + Jh' * v
         println("▽L $(size(▽L)): ", ▽L)
 
-        ▽²f = hessian(objectives(problem), trajectory(problem))
+        ▽²f = hessian(objectives(solver), primal(solver))
         println("▽²f $(size(▽²f)): ", ▽²f)
 
-        ▽²g = vector_hessian(inequality_constraints(problem), trajectory(problem), λ)
+        ▽²g = vector_hessian(inequality_constraints(solver), primal(solver), λ)
         println("▽²g $(size(▽²g)): ", ▽²g)
 
-        ▽²h = vector_hessian(equality_constraints(problem), trajectory(problem), v)
+        ▽²h = vector_hessian(equality_constraints(solver), primal(solver), v)
         println("▽²h $(size(▽²h)): ", ▽²h)
 
         ▽²L = ▽²f + ▽²g + ▽²h
@@ -183,12 +211,13 @@ function solve!(problem::Problem{T}) where {T}
 
         negate!(Jg)
         negate!(Jh)
-        qp_solution = solve_qp(g, Jg, h, Jh, ▽L, ▽²L)
-        println("QP solution ", qp_solution)
+        pₖ, lₖ = solve_qp(g, Jg, h, Jh, ▽L, ▽²L)
+        println("QP primal pₖ $(length(pₖ)): ", pₖ)
+        println("QP dual lₖ $(length(lₖ)): ", lₖ)
 
-        #        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
-        #        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
-        #        set_𝒗!(solver, 𝒗ₖ₊₁)
-        #        set_𝝀!(solver, 𝝀ₖ₊₁)
+        # solution step
+        knotpoints(primal(solver)) .+= pₖ
+        inequality_duals(solver) .+= @view lₖ[1:length(g)]
+        equality_duals(solver) .+= @view lₖ[(length(g)+1):end]
     end
 end

@@ -37,24 +37,24 @@ function df(method::Symbol = :sqp)
 
     τbound = 3.0
     inequality_constraints =
-        [control_bound_constraint([τbound], [-τbound], knotpointsize, 1:(N-1))]
+        [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
     equality_constraints = [
         HermiteSimpsonConstraint(mechanism, 1:(N-1)),
         state_equality_constraint(x0, knotpointsize, 1),
         state_equality_constraint(xf, knotpointsize, N),
     ]
 
-    knotpoint_trajectory = initialize_trajectory(mechanism, tf, Δt, nu)
+    initial_solution = initialize_trajectory(mechanism, tf, Δt, nu)
 
-    problem = Problem(
+    solver = SQPSolver(
         mechanism,
         objectives,
         equality_constraints,
         inequality_constraints,
-        knotpoint_trajectory,
+        initial_solution,
     )
 
-    solve!(problem)
+    solve!(solver)
 end
 
 end
