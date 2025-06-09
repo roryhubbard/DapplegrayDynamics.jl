@@ -1,16 +1,16 @@
 struct Problem{T}
     mechanism::Mechanism{T}
     objectives::AbstractVector{<:AdjacentKnotPointsFunction}
-    equality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
     inequality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
+    equality_constraints::AbstractVector{<:AdjacentKnotPointsFunction}
     trajectory::DiscreteTrajectory{T,T}
 end
 
 objectives(problem::Problem) = problem.objectives
 
-equality_constraints(problem::Problem) = problem.equality_constraints
-
 inequality_constraints(problem::Problem) = problem.inequality_constraints
+
+equality_constraints(problem::Problem) = problem.equality_constraints
 
 trajectory(problem::Problem) = problem.trajectory
 
@@ -46,88 +46,147 @@ end
 
 function evaluate_objective(
     objectives::AbstractVector{<:AdjacentKnotPointsFunction},
-    trajectory::DiscreteTrajectory,
+    Z::DiscreteTrajectory,
 )
     result = 0.0
     for objective ∈ objectives
-        result += objective(Val(Sum), trajectory)
+        result += objective(Val(Sum), Z)
     end
     result
 end
 
+function super_gradient(
+    objectives::AbstractVector{<:AdjacentKnotPointsFunction},
+    Z::DiscreteTrajectory,
+)
+    z = knotpoints(Z)
+    # Rest assured, no copying happening here
+    fwrapped(z) = evaluate_objective(
+        objectives,
+        DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)),
+    )
+    ForwardDiff.gradient(fwrapped, z)
+end
+
 function evaluate_constraints(
     constraints::AbstractVector{<:AdjacentKnotPointsFunction},
-    trajectory::DiscreteTrajectory{T},
-) where {T}
+    Z::DiscreteTrajectory{Ts,Tk},
+) where {Ts,Tk}
     # TODO: preallocate before here
-    result = Vector{T}()
+    result = Vector{Tk}()
     for constraint in constraints
-        val = constraint(Val(Concatenate), trajectory)
+        val = constraint(Val(Stack), Z)
         append!(result, val)
     end
     return result
 end
 
-function solve!(problem::Problem{T}) where {T}
-    v = zeros(num_lagrange_multipliers(equality_constraints(problem)))
-    println("v: ", v)
+function super_jacobian(
+    constraints::AbstractVector{<:AdjacentKnotPointsFunction},
+    Z::DiscreteTrajectory{Ts,Tk},
+) where {Ts,Tk}
+    z = knotpoints(Z)
+    # Rest assured, no copying happening here
+    fwrapped(z) = evaluate_constraints(
+        constraints,
+        DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)),
+    )
+    ForwardDiff.jacobian(fwrapped, z)
+end
 
+negate!(x::AbstractArray) = x .*= -1
+
+"""
+Solve QP using Clarabel
+
+minimize   1⁄2𝒙ᵀ𝑷𝒙 + 𝒒ᵀ𝒙
+subject to  𝑨𝒙 + 𝒔 = 𝒃
+                 𝒔 ∈ 𝑲
+with decision variables 𝒙 ∈ ℝⁿ, 𝒔 ∈ 𝑲 and data matrices 𝑷 = 𝑷ᵀ ≥ 0,
+𝒒 ∈ ℝⁿ, 𝑨 ∈ ℝᵐˣⁿ, and b ∈ ℝᵐ. The convext set 𝑲 is a composition of convex cones.
+"""
+function solve_qp(
+    g::AbstractVector{T},
+    Jg::AbstractMatrix{T},
+    h::AbstractVector{T},
+    Jh::AbstractMatrix{T},
+    ▽L::AbstractVector{T},
+    ▽²L::AbstractMatrix{T},
+) where {T}
+    P = sparse(▽²L)
+    q = ▽L
+    A = sparse([
+        Jg;
+        Jh;
+    ])
+    b = [
+        g;
+        h
+    ]
+    K = [Clarabel.ZeroConeT(length(h)), Clarabel.NonnegativeConeT(length(g))]
+
+    println("P $(size(P)): ", P)
+    println("q $(size(q)): ", q)
+    println("A $(size(A)): ", A)
+    println("b $(size(b)): ", b)
+    println("K $(size(K)): ", K)
+
+    settings = Clarabel.Settings()
+    solver = Clarabel.Solver()
+    Clarabel.setup!(solver, P, q, A, b, K, settings)
+    Clarabel.solve!(solver)
+end
+
+function solve!(problem::Problem{T}) where {T}
     λ = zeros(num_lagrange_multipliers(inequality_constraints(problem)))
     println("λ: ", λ)
 
-    for k = 1:1 # TODO: repeat until convergence criteria is met
-        fₖ = evaluate_objective(objectives(problem), trajectory(problem))
-        println("fₖ: ", fₖ)
+    v = zeros(num_lagrange_multipliers(equality_constraints(problem)))
+    println("v: ", v)
 
-        hₖ = evaluate_constraints(equality_constraints(problem), trajectory(problem))
-        println("hₖ: ", hₖ)
+    for k = 1:1
+        f = evaluate_objective(objectives(problem), trajectory(problem))
+        println("f: ", f)
 
-        gₖ = evaluate_constraints(inequality_constraints(problem), trajectory(problem))
-        println("gₖ: ", hₖ)
+        g = evaluate_constraints(inequality_constraints(problem), trajectory(problem))
+        println("g $(size(g)): ", g)
 
-        ▽f_vstacked = gradient(objectives(problem), trajectory(problem))
-        println("▽f_vstacked: ", Matrix(▽f_vstacked))
+        h = evaluate_constraints(equality_constraints(problem), trajectory(problem))
+        println("h $(size(h)): ", h)
 
-        Jh = jacobian(equality_constraints(problem), trajectory(problem))
-        println("Jh: ", Jh)
+        ▽f = gradient(Val(Sum), objectives(problem), trajectory(problem))
+        println("▽f $(size(▽f)): ", ▽f)
 
         Jg = jacobian(inequality_constraints(problem), trajectory(problem))
-        println("Jg: ", Matrix(Jg))
+        println("Jg $(size(Jg)): ", Jg)
 
-        #        ℒ = build_lagrangian(𝒇, 𝒉, 𝒈, 𝒗, 𝝀)
-        #        ▽ₓ𝒇 = gradient(𝒇)
-        #        𝑱ₓ𝒉 = jacobian(𝒉)
-        #        𝑱ₓ𝒈 = jacobian(𝒈)
-        #        # ▽ₓℒ = gradiant(ℒ)
-        #        ▽ₓℒ = ▽ₓ𝒇 + 𝑱ₓ𝒉'𝒗 + 𝑱ₓ𝒈'𝝀
-        #        ▽²ₓₓℒ = hessian(▽ₓℒ)
-        #
-        #        """
-        #        Solve QP using Clarabel
-        #
-        #        minimize   1⁄2𝒙ᵀ𝑷𝒙 + 𝒒ᵀ𝒙
-        #        subject to  𝑨𝒙 + 𝒔 = 𝒃
-        #                         𝒔 ∈ 𝑲
-        #        with decision variables 𝒙 ∈ ℝⁿ, 𝒔 ∈ 𝑲 and data matrices 𝑷 = 𝑷ᵀ ≥ 0,
-        #        𝒒 ∈ ℝⁿ, 𝑨 ∈ ℝᵐˣⁿ, and b ∈ ℝᵐ. The convext set 𝑲 is a composition of convex cones.
-        #        """
-        #        𝑷 = sparse(▽²ₓₓℒ)
-        #        𝒒 = sparse(▽ₓℒ)
-        #        𝑨 = sparse([𝑱ₓ𝒉;
-        #                    𝑱ₓ𝒈;
-        #                    ])
-        #        𝒃 = [-𝒉;
-        #             -𝒈]
-        #        𝑲 = [
-        #            Clarabel.ZeroConeT(length(𝒉)),
-        #            Clarabel.NonnegativeConeT(length(𝒈))]
-        #
-        #        settings = Clarabel.Settings()
-        #        solver   = Clarabel.Solver()
-        #        Clarabel.setup!(solver, 𝑷, 𝒒, 𝑨, 𝒃, 𝑲, settings)
-        #        result = Clarabel.solve!(solver)
+        Jh = jacobian(equality_constraints(problem), trajectory(problem))
+        println("Jh $(size(Jh)): ", Jh)
+
+        L = f + λ' * g + v' * h
+        println("L $(size(L)): ", L)
+
+        ▽L = ▽f + Jg' * λ + Jh' * v
+        println("▽L $(size(▽L)): ", ▽L)
+
+        ▽²f = hessian(objectives(problem), trajectory(problem))
+        println("▽²f $(size(▽²f)): ", ▽²f)
+
+        ▽²g = vector_hessian(inequality_constraints(problem), trajectory(problem), λ)
+        println("▽²g $(size(▽²g)): ", ▽²g)
+
+        ▽²h = vector_hessian(equality_constraints(problem), trajectory(problem), v)
+        println("▽²h $(size(▽²h)): ", ▽²h)
+
+        ▽²L = ▽²f + ▽²g + ▽²h
+        println("▽²L: ", ▽²L)
+
+        negate!(Jg)
+        negate!(Jh)
+        qp_solution = solve_qp(g, Jg, h, Jh, ▽L, ▽²L)
+        println("QP solution ", qp_solution)
+
         #        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
-        #
         #        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
         #        set_𝒗!(solver, 𝒗ₖ₊₁)
         #        set_𝝀!(solver, 𝝀ₖ₊₁)
