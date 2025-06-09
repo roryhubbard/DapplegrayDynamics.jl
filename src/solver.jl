@@ -94,6 +94,43 @@ function super_jacobian(
     ForwardDiff.jacobian(fwrapped, z)
 end
 
+negate!(x::AbstractArray) = x .*= -1
+
+"""
+Solve QP using Clarabel
+
+minimize   1⁄2𝒙ᵀ𝑷𝒙 + 𝒒ᵀ𝒙
+subject to  𝑨𝒙 + 𝒔 = 𝒃
+                 𝒔 ∈ 𝑲
+with decision variables 𝒙 ∈ ℝⁿ, 𝒔 ∈ 𝑲 and data matrices 𝑷 = 𝑷ᵀ ≥ 0,
+𝒒 ∈ ℝⁿ, 𝑨 ∈ ℝᵐˣⁿ, and b ∈ ℝᵐ. The convext set 𝑲 is a composition of convex cones.
+"""
+function solve_qp(g::AbstractVector{T}, Jg::AbstractMatrix{T},
+    h::AbstractVector{T}, Jh::AbstractMatrix{T}, ▽L::AbstractVector{T},
+    ▽²L::AbstractMatrix{T}) where {T}
+    P = sparse(▽²L)
+    q = ▽L
+    A = sparse([Jg;
+                Jh;
+                ])
+    b = [g;
+         h]
+    K = [
+        Clarabel.ZeroConeT(length(h)),
+        Clarabel.NonnegativeConeT(length(g))]
+
+    println("P $(size(P)): ", P)
+    println("q $(size(q)): ", q)
+    println("A $(size(A)): ", A)
+    println("b $(size(b)): ", b)
+    println("K $(size(K)): ", K)
+
+    settings = Clarabel.Settings()
+    solver   = Clarabel.Solver()
+    Clarabel.setup!(solver, P, q, A, b, K, settings)
+    Clarabel.solve!(solver)
+end
+
 function solve!(problem::Problem{T}) where {T}
     λ = zeros(num_lagrange_multipliers(inequality_constraints(problem)))
     println("λ: ", λ)
@@ -138,39 +175,10 @@ function solve!(problem::Problem{T}) where {T}
         ▽²L = ▽²f + ▽²g + ▽²h
         println("▽²L: ", ▽²L)
 
-        """
-        Solve QP using Clarabel
-
-        minimize   1⁄2𝒙ᵀ𝑷𝒙 + 𝒒ᵀ𝒙
-        subject to  𝑨𝒙 + 𝒔 = 𝒃
-                         𝒔 ∈ 𝑲
-        with decision variables 𝒙 ∈ ℝⁿ, 𝒔 ∈ 𝑲 and data matrices 𝑷 = 𝑷ᵀ ≥ 0,
-        𝒒 ∈ ℝⁿ, 𝑨 ∈ ℝᵐˣⁿ, and b ∈ ℝᵐ. The convext set 𝑲 is a composition of convex cones.
-        """
-        P = sparse(▽²L)
-        q = ▽L
-        Jg .*= -1
-        Jh .*= -1
-        A = sparse([Jg;
-                    Jh;
-                    ])
-        b = [g;
-             h]
-        K = [
-            Clarabel.ZeroConeT(length(h)),
-            Clarabel.NonnegativeConeT(length(g))]
-
-        println("P $(size(P)): ", P)
-        println("q $(size(q)): ", q)
-        println("A $(size(A)): ", A)
-        println("b $(size(b)): ", b)
-        println("K $(size(K)): ", K)
-
-        settings = Clarabel.Settings()
-        solver   = Clarabel.Solver()
-        Clarabel.setup!(solver, P, q, A, b, K, settings)
-        result = Clarabel.solve!(solver)
-        println("QP result ", result)
+        negate!(Jg)
+        negate!(Jh)
+        qp_solution = solve_qp(g, Jg, h, Jh, ▽L, ▽²L)
+        println("QP solution ", qp_solution)
 #        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
 #
 #        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
