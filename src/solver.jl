@@ -134,7 +134,11 @@ function solve_qp(
     settings = Clarabel.Settings()
     solver = Clarabel.Solver()
     Clarabel.setup!(solver, P, q, A, b, K, settings)
-    Clarabel.solve!(solver)
+    solution = Clarabel.solve!(solver)
+    # solution.x → primal solution
+    # solution.z → dual solution
+    # solution.s → slacks
+    (solution.x, solution.z)
 end
 
 function solve!(problem::Problem{T}) where {T}
@@ -183,8 +187,9 @@ function solve!(problem::Problem{T}) where {T}
 
         negate!(Jg)
         negate!(Jh)
-        qp_solution = solve_qp(g, Jg, h, Jh, ▽L, ▽²L)
-        println("QP solution ", qp_solution)
+        pₖ, lₖ = solve_qp(g, Jg, h, Jh, ▽L, ▽²L)
+        println("QP primal pₖ $(length(pₖ)): ", pₖ)
+        println("QP dual lₖ $(length(lₖ)): ", lₖ)
 
         #        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
         #        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
