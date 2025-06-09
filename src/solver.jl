@@ -13,8 +13,8 @@ struct SQPSolver{T}
         g::AbstractVector{<:AdjacentKnotPointsFunction},
         h::AbstractVector{<:AdjacentKnotPointsFunction},
         x::DiscreteTrajectory{T,T},
-        λ::Union{AbstractVector{T}, Nothing} = nothing,
-        v::Union{AbstractVector{T}, Nothing} = nothing,
+        λ::Union{AbstractVector{T},Nothing} = nothing,
+        v::Union{AbstractVector{T},Nothing} = nothing,
     ) where {T}
         if isnothing(λ)
             λ = zeros(T, num_lagrange_multipliers(g))
@@ -218,6 +218,6 @@ function solve!(solver::SQPSolver{T}) where {T}
         # solution step
         knotpoints(primal(solver)) .+= pₖ
         inequality_duals(solver) .+= @view lₖ[1:length(g)]
-        equality_duals(solver) .+= @view lₖ[length(g)+1:end]
+        equality_duals(solver) .+= @view lₖ[(length(g)+1):end]
     end
 end

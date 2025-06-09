@@ -46,7 +46,13 @@ function df(method::Symbol = :sqp)
 
     initial_solution = initialize_trajectory(mechanism, tf, Δt, nu)
 
-    solver = SQPSolver(mechanism, objectives, equality_constraints, inequality_constraints, initial_solution)
+    solver = SQPSolver(
+        mechanism,
+        objectives,
+        equality_constraints,
+        inequality_constraints,
+        initial_solution,
+    )
 
     solve!(solver)
 end
