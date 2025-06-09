@@ -219,10 +219,5 @@ function solve!(solver::SQPSolver{T}) where {T}
         knotpoints(primal(solver)) .+= pₖ
         inequality_duals(solver) .+= @view lₖ[1:length(g)]
         equality_duals(solver) .+= @view lₖ[length(g)+1:end]
-
-        #        𝚫𝒙ₖ₊₁, 𝒗ₖ₊₁, 𝝀ₖ₊₁ = unpack_result(result)
-        #        nudge_𝒙!(solver, 𝚫𝒙ₖ₊₁)
-        #        set_𝒗!(solver, 𝒗ₖ₊₁)
-        #        set_𝝀!(solver, 𝝀ₖ₊₁)
     end
 end
