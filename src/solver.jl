@@ -6,6 +6,7 @@ struct SQPSolver{T}
     x::DiscreteTrajectory{T}
     λ::AbstractVector{T}
     v::AbstractVector{T}
+    settings::Clarabel.Settings{T}
 
     function SQPSolver(
         mechanism::Mechanism{T},
@@ -15,6 +16,7 @@ struct SQPSolver{T}
         x::DiscreteTrajectory{T,T},
         λ::Union{AbstractVector{T},Nothing} = nothing,
         v::Union{AbstractVector{T},Nothing} = nothing,
+        settings::Union{Clarabel.Settings{T},Nothing} = nothing,
     ) where {T}
         if isnothing(λ)
             λ = zeros(T, num_lagrange_multipliers(g))
@@ -22,13 +24,23 @@ struct SQPSolver{T}
         if isnothing(v)
             v = zeros(T, num_lagrange_multipliers(h))
         end
+        if isnothing(settings)
+            settings = Clarabel.Settings(
+                max_iter            = 10,
+                time_limit          = 60,
+                verbose             = true,
+                max_step_fraction   = 0.99,
+                tol_gap_abs         = 1e-8,
+                tol_gap_rel         = 1e-8,
+            )
+        end
 
         ng = num_lagrange_multipliers(g)
         @assert length(λ) == ng "inequality constraint lagrange multipliers vector must have length $(ng) but has $(length(λ))"
         nh = num_lagrange_multipliers(h)
         @assert length(v) == nh "equality constraint lagrange multipliers vector must have length $(nh) but has $(length(v))"
 
-        new{T}(mechanism, f, g, h, x, λ, v)
+        new{T}(mechanism, f, g, h, x, λ, v, settings)
     end
 end
 
@@ -43,6 +55,8 @@ inequality_duals(solver::SQPSolver) = solver.λ
 equality_duals(solver::SQPSolver) = solver.v
 
 primal(solver::SQPSolver) = solver.x
+
+get_settings(solver::SQPSolver) = solver.settings
 
 function initialize_trajectory(mechanism::Mechanism{T}, tf::T, Δt::T, nu::Int) where {T}
     ts, qs, vs = simulate_mechanism(mechanism, tf, Δt, zeros(T, 2), zeros(T, 2))
@@ -134,6 +148,7 @@ function solve_qp(
     Jh::AbstractMatrix{T},
     ▽L::AbstractVector{T},
     ▽²L::AbstractMatrix{T},
+    settings::Clarabel.Settings{T},
 ) where {T}
     P = sparse(▽²L)
     q = ▽L
@@ -153,7 +168,6 @@ function solve_qp(
     println("b $(size(b)): ", b)
     println("K $(size(K)): ", K)
 
-    settings = Clarabel.Settings()
     solver = Clarabel.Solver(P, q, A, b, K, settings)
     solution = Clarabel.solve!(solver)
     # solution.x → primal solution
@@ -163,18 +177,19 @@ function solve_qp(
 end
 
 function solve!(solver::SQPSolver{T}) where {T}
-    for k = 1:1
+    settings = get_settings(solver)
+    for k = 1:settings.max_iter
         x = primal(solver)
-        println("primal x: ", x)
+        println("primal x $(length(knotpoints(x))): ", x)
 
         λ = inequality_duals(solver)
-        println("dual λ: ", λ)
+        println("dual λ $(length(λ)): ", λ)
 
         v = equality_duals(solver)
-        println("dual v: ", v)
+        println("dual v $(length(v)): ", v)
 
         f = evaluate_objective(objectives(solver), primal(solver))
-        println("f: ", f)
+        println("f $(length(f)): ", f)
 
         g = evaluate_constraints(inequality_constraints(solver), primal(solver))
         println("g $(size(g)): ", g)
@@ -207,11 +222,11 @@ function solve!(solver::SQPSolver{T}) where {T}
         println("▽²h $(size(▽²h)): ", ▽²h)
 
         ▽²L = ▽²f + ▽²g + ▽²h
-        println("▽²L: ", ▽²L)
+        println("▽²L $(size(▽²L)): ", ▽²L)
 
         negate!(Jg)
         negate!(Jh)
-        pₖ, lₖ = solve_qp(g, Jg, h, Jh, ▽L, ▽²L)
+        pₖ, lₖ = solve_qp(g, Jg, h, Jh, ▽L, ▽²L, settings)
         println("QP primal pₖ $(length(pₖ)): ", pₖ)
         println("QP dual lₖ $(length(lₖ)): ", lₖ)
 
