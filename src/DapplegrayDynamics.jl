@@ -7,8 +7,6 @@ using RigidBodyDynamics
 using SparseArrays
 using StaticArrays
 
-export df
-
 include("trajectory.jl")
 include("knotpointsfunction.jl")
 include("constraints.jl")
@@ -16,7 +14,9 @@ include("objective.jl")
 include("rigidbodydynamics.jl")
 include("solver.jl")
 
-function df(method::Symbol = :sqp)
+export df
+
+function df()
     mechanism = doublependulum()
     nx = num_positions(mechanism) + num_velocities(mechanism)
     nu = 1 # control dimension
@@ -55,6 +55,8 @@ function df(method::Symbol = :sqp)
     )
 
     solve!(solver)
+
+    solver
 end
 
 end
