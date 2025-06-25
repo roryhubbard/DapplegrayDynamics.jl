@@ -231,8 +231,8 @@ function solve!(solver::SQPSolver{T}) where {T}
         println("QP dual lₖ $(length(lₖ)): ", lₖ)
 
         # solution step
-        knotpoints(primal(solver)) .+= pₖ
-        inequality_duals(solver) .+= @view lₖ[1:length(g)]
-        equality_duals(solver) .+= @view lₖ[(length(g)+1):end]
+        knotpoints(primal(solver)) .+= settings.max_step_fraction .* pₖ
+        inequality_duals(solver) .+= settings.max_step_fraction .* @view lₖ[1:length(g)]
+        equality_duals(solver) .+= settings.max_step_fraction .* @view lₖ[(length(g)+1):end]
     end
 end
