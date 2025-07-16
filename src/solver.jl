@@ -26,12 +26,12 @@ struct SQPSolver{T}
         end
         if isnothing(settings)
             settings = Clarabel.Settings(
-                max_iter            = 10,
-                time_limit          = 60,
-                verbose             = true,
-                max_step_fraction   = 0.99,
-                tol_gap_abs         = 1e-8,
-                tol_gap_rel         = 1e-8,
+                max_iter = 10,
+                time_limit = 60,
+                verbose = true,
+                max_step_fraction = 0.99,
+                tol_gap_abs = 1e-8,
+                tol_gap_rel = 1e-8,
             )
         end
 
