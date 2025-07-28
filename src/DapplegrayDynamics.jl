@@ -14,7 +14,7 @@ include("objective.jl")
 include("rigidbodydynamics.jl")
 include("solver.jl")
 
-export df
+export acrobot_swingup, df
 
 function acrobot_swingup(mechanism::Mechanism)
     nx = num_positions(mechanism) + num_velocities(mechanism)
