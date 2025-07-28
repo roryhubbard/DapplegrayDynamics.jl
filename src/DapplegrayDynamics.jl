@@ -58,6 +58,12 @@ function acrobot_swingup(mechanism::Mechanism)
     solver
 end
 
+function load_acrobot()::Mechanism
+    srcdir = dirname(pathof(DapplegrayDynamics))
+    urdf = joinpath(srcdir, "..", "test", "urdf", "Acrobot.urdf")
+    parse_urdf(urdf)
+end
+
 function df(urdf::Bool=true)
     mechanism = urdf ? load_acrobot() : doublependulum()
     acrobot_swingup(mechanism)
