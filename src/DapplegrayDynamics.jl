@@ -7,6 +7,9 @@ using RigidBodyDynamics
 using SparseArrays
 using StaticArrays
 
+# Re-export from RigidBodyDynamics.jl
+export Mechanism, parse_urdf
+
 include("trajectory.jl")
 include("knotpointsfunction.jl")
 include("constraints.jl")
