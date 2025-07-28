@@ -1,9 +1,3 @@
-function load_acrobot()::Mechanism
-    srcdir = dirname(pathof(DapplegrayDynamics))
-    urdf = joinpath(srcdir, "..", "test", "urdf", "Acrobot.urdf")
-    parse_urdf(urdf)
-end
-
 function doublependulum()::Mechanism
     g = -9.81 # gravitational acceleration in z-direction
     world = RigidBody{Float64}("world")
