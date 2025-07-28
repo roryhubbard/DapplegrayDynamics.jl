@@ -16,8 +16,7 @@ include("solver.jl")
 
 export df
 
-function df()
-    mechanism = doublependulum()
+function acrobot_swingup(mechanism::Mechanism)
     nx = num_positions(mechanism) + num_velocities(mechanism)
     nu = 1 # control dimension
     knotpointsize = nx + nu
@@ -57,6 +56,11 @@ function df()
     solve!(solver)
 
     solver
+end
+
+function df(urdf::Bool=true)
+    mechanism = urdf ? load_acrobot() : doublependulum()
+    acrobot_swingup(mechanism)
 end
 
 end
