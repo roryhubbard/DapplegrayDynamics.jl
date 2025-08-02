@@ -14,6 +14,7 @@ struct DiscreteTrajectory{Ts,Tk}
     ) where {Ts,Tk}
         nk = length(knotpoints) ÷ knotpointsize
         @assert length(time) == length(timesteps) == nk "lengths must match"
+        @assert nstates % 2 == 0 "number of states must be evenly divisible by 2 -> # positions == # velocities"
         new{Ts,Tk}(time, timesteps, knotpoints, knotpointsize, nstates)
     end
 end
@@ -49,6 +50,10 @@ knotpointsize(trajectory::DiscreteTrajectory) = trajectory.knotpointsize
 
 nstates(trajectory::DiscreteTrajectory) = trajectory.nstates
 
+npositions(trajectory::DiscreteTrajectory) = nstates(trajectory) ÷ 2
+
+nvelocities(trajectory::DiscreteTrajectory) = npositions(trajectory)
+
 function Base.getindex(trajectory::DiscreteTrajectory, idx::UnitRange{Int})
     return DiscreteTrajectory(
         time(trajectory)[idx],
@@ -83,9 +88,22 @@ function state(trajectory::DiscreteTrajectory, ::Val{N}) where {N}
     k = knotpoints(trajectory)
     return ntuple(i -> state(trajectory, i), Val(N))
 end
-function state_trajectory(trajectory::DiscreteTrajectory; useview::Bool = true)
+function state_trajectory(trajectory::DiscreteTrajectory)
     nk = length(time(trajectory))
     return [state(trajectory, i) for i in 1:nk]
+end
+
+function position_trajectory(trajectory::DiscreteTrajectory)
+    nk = length(time(trajectory))
+    np = npositions(trajectory)
+    return [state(trajectory, i)[1:np] for i in 1:nk]
+end
+
+function velocity_trajectory(trajectory::DiscreteTrajectory)
+    nk = length(time(trajectory))
+    np = npositions(trajectory)
+    nv = nvelocities(trajectory)
+    return [state(trajectory, i)[np+1:np+nv] for i in 1:nk]
 end
 
 function control(trajectory::DiscreteTrajectory, idx::Int)
@@ -100,7 +118,7 @@ function control(trajectory::DiscreteTrajectory, ::Val{N}) where {N}
     k = knotpoints(trajectory)
     return ntuple(i -> control(trajectory, i), Val(N))
 end
-function control_trajectory(trajectory::DiscreteTrajectory; useview::Bool = true)
+function control_trajectory(trajectory::DiscreteTrajectory)
     nk = length(time(trajectory))
     return [control(trajectory, i) for i in 1:nk]
 end
