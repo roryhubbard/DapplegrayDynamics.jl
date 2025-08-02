@@ -83,6 +83,10 @@ function state(trajectory::DiscreteTrajectory, ::Val{N}) where {N}
     k = knotpoints(trajectory)
     return ntuple(i -> state(trajectory, i), Val(N))
 end
+function state_trajectory(trajectory::DiscreteTrajectory; useview::Bool = true)
+    nk = length(time(trajectory))
+    return [state(trajectory, i) for i in 1:nk]
+end
 
 function control(trajectory::DiscreteTrajectory, idx::Int)
     k = knotpoints(trajectory)
@@ -94,13 +98,15 @@ function control(trajectory::DiscreteTrajectory, idx::Int)
 end
 function control(trajectory::DiscreteTrajectory, ::Val{N}) where {N}
     k = knotpoints(trajectory)
-    nx = nstates(trajectory)
-    ksize = knotpointsize(trajectory)
     return ntuple(i -> control(trajectory, i), Val(N))
+end
+function control_trajectory(trajectory::DiscreteTrajectory; useview::Bool = true)
+    nk = length(time(trajectory))
+    return [control(trajectory, i) for i in 1:nk]
 end
 
 function noncontiguous_knots(trajectory::DiscreteTrajectory; useview::Bool = true)
-    nk = length(trajectory.time)
+    nk = length(time(trajectory))
     return [
         knotpoints(trajectory, i; useview=useview)
         for i in 1:nk
