@@ -31,6 +31,8 @@ function knotpoints(
     irange = knotpointindices(trajectory, idx)
     return useview ? view(knotpoints(trajectory), irange) : knotpoints(trajectory)[irange]
 end
+knotpoints(trajectory::DiscreteTrajectory, idx::Int; kwargs...) =
+    knotpoints(trajectory, idx:idx; kwargs...)
 
 function knotpointindices(trajectory::DiscreteTrajectory, idx::UnitRange{Int})
     ksize = knotpointsize(trajectory)
@@ -95,4 +97,12 @@ function control(trajectory::DiscreteTrajectory, ::Val{N}) where {N}
     nx = nstates(trajectory)
     ksize = knotpointsize(trajectory)
     return ntuple(i -> control(trajectory, i), Val(N))
+end
+
+function noncontiguous_knots(trajectory::DiscreteTrajectory; useview::Bool = true)
+    nk = length(trajectory.time)
+    return [
+        knotpoints(trajectory, i; useview=useview)
+        for i in 1:nk
+    ]
 end
