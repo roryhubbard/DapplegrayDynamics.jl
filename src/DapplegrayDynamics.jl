@@ -67,7 +67,7 @@ end
 
 function df(urdf::Bool=true)
     mechanism = urdf ? load_acrobot() : doublependulum()
-    acrobot_swingup(mechanism, 2, 1.0)
+    acrobot_swingup(mechanism, 50, 10.0)
 end
 
 end

@@ -181,7 +181,6 @@ function solve_qp(
 end
 
 function solve!(solver::SQPSolver{T}) where {T}
-    return
     settings = get_settings(solver)
     for k = 1:settings.max_iter
         x = primal(solver)
