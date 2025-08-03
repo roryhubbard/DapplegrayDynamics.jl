@@ -58,23 +58,27 @@ primal(solver::SQPSolver) = solver.x
 
 get_settings(solver::SQPSolver) = solver.settings
 
-function initialize_trajectory(mechanism::Mechanism{T}, tf::T, Δt::T, nu::Int) where {T}
-    ts, qs, vs = simulate_mechanism(mechanism, tf, Δt, zeros(T, 2), zeros(T, 2))
+function initialize_trajectory(mechanism::Mechanism{T}, N::Int, tf::T, nu::Int, straight_line::Bool=true) where {T}
+    nq = num_positions(mechanism)
+    nv = num_velocities(mechanism)
+    ts, qs, vs = straight_line ? straight_line_trajectory(N, tf, zeros(T, nq), [π, 0], zeros(T, nv), zeros(T, nv)) : simulate_mechanism(mechanism, N, tf, [π, 0.0], [0.0, deg2rad(.1)])
 
     N = length(ts)
-    nx = num_positions(mechanism) + num_velocities(mechanism)
+    nx = nq + nv
     knotpointsize = nx + nu
     num_decision_variables = N * knotpointsize
     zero_control_vector = zeros(nu)
 
-    timesteps = fill(T(Δt), N)
+    timesteps = diff(ts)
+    # timesteps needs to be the same length as timestamps
+    push!(timesteps, last(timesteps))
+
     knotpoints = Vector{T}(undef, num_decision_variables)
 
     for i = 1:N
         idx₀ = (i - 1) * knotpointsize + 1
         idx₁ = idx₀ + knotpointsize - 1
-        knotpoint = [qs[i]; vs[i]; zero_control_vector]
-        knotpoints[idx₀:idx₁] = knotpoint
+        knotpoints[idx₀:idx₁] = [qs[i]; vs[i]; zero_control_vector]
     end
 
     DiscreteTrajectory(ts, timesteps, knotpoints, knotpointsize, nx)
@@ -177,6 +181,7 @@ function solve_qp(
 end
 
 function solve!(solver::SQPSolver{T}) where {T}
+    return
     settings = get_settings(solver)
     for k = 1:settings.max_iter
         x = primal(solver)

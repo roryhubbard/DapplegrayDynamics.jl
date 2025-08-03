@@ -19,13 +19,11 @@ include("solver.jl")
 
 export acrobot_swingup, df
 
-function acrobot_swingup(mechanism::Mechanism)
+function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     nx = num_positions(mechanism) + num_velocities(mechanism)
     nu = 1 # control dimension
     knotpointsize = nx + nu
 
-    N = 2
-    tf = 1.0           # final time (sec)
     Δt = tf / (N - 1)  # time step (sec)
 
     x0 = zeros(nx)
@@ -46,7 +44,7 @@ function acrobot_swingup(mechanism::Mechanism)
         state_equality_constraint(xf, knotpointsize, N),
     ]
 
-    initial_solution = initialize_trajectory(mechanism, tf, Δt, nu)
+    initial_solution = initialize_trajectory(mechanism, N, tf, nu)
 
     solver = SQPSolver(
         mechanism,
@@ -69,7 +67,7 @@ end
 
 function df(urdf::Bool=true)
     mechanism = urdf ? load_acrobot() : doublependulum()
-    acrobot_swingup(mechanism)
+    acrobot_swingup(mechanism, 2, 1.0)
 end
 
 end
