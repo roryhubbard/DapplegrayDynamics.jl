@@ -7,6 +7,9 @@ using RigidBodyDynamics
 using SparseArrays
 using StaticArrays
 
+# Re-export from RigidBodyDynamics.jl
+export Mechanism, parse_urdf
+
 include("trajectory.jl")
 include("knotpointsfunction.jl")
 include("constraints.jl")
@@ -14,16 +17,13 @@ include("objective.jl")
 include("rigidbodydynamics.jl")
 include("solver.jl")
 
-export df
+export acrobot_swingup, df
 
-function df()
-    mechanism = doublependulum()
+function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     nx = num_positions(mechanism) + num_velocities(mechanism)
     nu = 1 # control dimension
     knotpointsize = nx + nu
 
-    N = 2
-    tf = 1.0           # final time (sec)
     Δt = tf / (N - 1)  # time step (sec)
 
     x0 = zeros(nx)
@@ -44,7 +44,7 @@ function df()
         state_equality_constraint(xf, knotpointsize, N),
     ]
 
-    initial_solution = initialize_trajectory(mechanism, tf, Δt, nu)
+    initial_solution = initialize_trajectory(mechanism, N, tf, nu)
 
     solver = SQPSolver(
         mechanism,
@@ -57,6 +57,17 @@ function df()
     solve!(solver)
 
     solver
+end
+
+function load_acrobot()::Mechanism
+    srcdir = dirname(pathof(DapplegrayDynamics))
+    urdf = joinpath(srcdir, "..", "test", "urdf", "Acrobot.urdf")
+    parse_urdf(urdf)
+end
+
+function df(urdf::Bool=true)
+    mechanism = urdf ? load_acrobot() : doublependulum()
+    acrobot_swingup(mechanism, 50, 10.0)
 end
 
 end
