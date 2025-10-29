@@ -104,7 +104,7 @@ end
 # TODO: dynamics! assumes fully actuated systems, figure out a method for
 # dealing with control vectors that are smaller in rank than the vector of
 # "velocities" in mechanism state
-function hermite_simpson_separated(
+function separated_hermite_simpson(
     mechanism::Mechanism{T},
     Δt::Real,
     xₖ::AbstractVector{T},
@@ -135,7 +135,7 @@ function hermite_simpson_separated(
     c₂ = ẋₘ - 1 / 2 * (xₖ + xₖ₊₁) - Δt / 8 * (ẋₖ - ẋₖ₊₁)
     c₁, c₂
 end
-function hermite_simpson_compressed(
+function compressed_hermite_simpson(
     mechanism::Mechanism{Tm},
     Δt::Real,
     xₖ::AbstractVector{Tk},
@@ -170,7 +170,9 @@ function hermite_simpson_compressed(
     xₖ₊₁ - xₖ - Δt / 6 * (ẋₖ + 4 * ẋₘ + ẋₖ₊₁)
 end
 
-struct CompressedHermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
+abstract type HermiteSimpsonConstraint <: AdjacentKnotPointsFunction end
+
+struct CompressedHermiteSimpsonConstraint{T} <: HermiteSimpsonConstraint
     mechanism::Mechanism{T}
     idx::UnitRange{Int}
     nknots::Int
@@ -189,5 +191,27 @@ function (con::CompressedHermiteSimpsonConstraint)(z::DiscreteTrajectory)
     @assert length(knotpoints(z)) == knotpointsize(z) * nknots(con) "CompressedHermiteSimpsonConstraint expects knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(knotpoints(z)))"
     xₖ, xₖ₊₁ = state(z, Val(2))
     uₖ, uₖ₊₁ = control(z, Val(2))
-    hermite_simpson_compressed(con.mechanism, first(Δt), xₖ, uₖ, xₖ₊₁, uₖ₊₁)
+    compressed_hermite_simpson(con.mechanism, first(Δt), xₖ, uₖ, xₖ₊₁, uₖ₊₁)
+end
+
+struct SeparatedHermiteSimpsonConstraint{T} <: HermiteSimpsonConstraint
+    mechanism::Mechanism{T}
+    idx::UnitRange{Int}
+    nknots::Int
+    outputdim::Int
+    function SeparatedHermiteSimpsonConstraint(
+        mechanism::Mechanism{T},
+        idx::UnitRange{Int},
+    ) where {T}
+        outputdim = num_positions(mechanism) + num_velocities(mechanism)
+        new{T}(mechanism, idx, 2, outputdim)
+    end
+end
+function (con::SeparatedHermiteSimpsonConstraint)(z::DiscreteTrajectory)
+    Δt = timesteps(z)
+    @assert length(Δt) == 2 "SeparatedHermiteSimpsonConstraint expects two knotpoints and therefore 2 timesteps, but received $(length(Δt))"
+    @assert length(knotpoints(z)) == knotpointsize(z) * nknots(con) "SeparatedHermiteSimpsonConstraint expects knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(knotpoints(z)))"
+    xₖ, xₖ₊₁ = state(z, Val(2))
+    uₖ, uₖ₊₁ = control(z, Val(2))
+    separated_hermite_simpson(con.mechanism, first(Δt), xₖ, uₖ, xₖ₊₁, uₖ₊₁)
 end
