@@ -1,6 +1,4 @@
-abstract type AdjacentKnotPointsConstraint <: AdjacentKnotPointsFunction end
-
-struct ConicConstraint{T} <: AdjacentKnotPointsConstraint
+struct ConicConstraint{T} <: AdjacentKnotPointsFunction
     A::SparseMatrixCSC{T,Int}
     b::AbstractVector{T}
     cone::Clarabel.SupportedCone
@@ -148,6 +146,8 @@ function hermite_simpson_compressed(
     mechanismstate = MechanismState{Tk}(mechanism)
     dynamicsresult = DynamicsResult{Tk}(mechanism)
 
+    # TODO: remove this hardcode nullification of one of the actuators, see TODO
+    # above
     τₖ = vcat(0.0, uₖ)
     ẋₖ = similar(xₖ)
     dynamics!(ẋₖ, dynamicsresult, mechanismstate, xₖ, τₖ)
@@ -156,7 +156,7 @@ function hermite_simpson_compressed(
     ẋₖ₊₁ = similar(xₖ₊₁)
     dynamics!(ẋₖ₊₁, dynamicsresult, mechanismstate, xₖ₊₁, τₖ₊₁)
 
-    # We could add the collocation point as an extra decision varaible and
+    # We could add the collocation point as an extra decision variable and
     # constraint. This would be "separated form". Here we are implementing
     # "compressed form" where we calculate `fcol` and jam it into the constraint
     # for the integral of the system dynamics.

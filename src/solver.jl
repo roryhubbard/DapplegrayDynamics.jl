@@ -58,10 +58,15 @@ primal(solver::SQPSolver) = solver.x
 
 get_settings(solver::SQPSolver) = solver.settings
 
-function initialize_trajectory(mechanism::Mechanism{T}, N::Int, tf::T, nu::Int, straight_line::Bool=true) where {T}
+function initialize_trajectory(mechanism::Mechanism{T}, N::Int, tf::T, nu::Int,
+    q₀::AbstractVector{T},
+    q₁::AbstractVector{T},
+    q̇₀::AbstractVector{T},
+    q̇₁::AbstractVector{T}) where {T}
     nq = num_positions(mechanism)
     nv = num_velocities(mechanism)
-    ts, qs, vs = straight_line ? straight_line_trajectory(N, tf, zeros(T, nq), [π, 0], zeros(T, nv), zeros(T, nv)) : simulate_mechanism(mechanism, N, tf, [π, 0.0], [0.0, deg2rad(.1)])
+
+    ts, qs, vs = straight_line_trajectory(N, tf, q₀, q₁, q̇₀, q̇₁)
 
     N = length(ts)
     nx = nq + nv

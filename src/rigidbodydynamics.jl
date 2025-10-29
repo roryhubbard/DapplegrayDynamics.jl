@@ -56,12 +56,12 @@ function simulate_mechanism(
     mechansim::Mechanism{T},
     N::Int,
     tf::T,
-    initial_configuration::AbstractVector{T},
-    initial_velocity::AbstractVector{T},
+    q₀::AbstractVector{T},
+    q̇₀::AbstractVector{T},
 ) where {T}
     state = MechanismState(mechansim)
-    set_configuration!(state, initial_configuration)
-    set_velocity!(state, initial_velocity)
+    set_configuration!(state, q₀)
+    set_velocity!(state, q̇₀)
 
     Δt = tf / (N - 1)  # time step (sec)
     simulate(state, tf, Δt = Δt);
@@ -70,10 +70,10 @@ end
 function straight_line_trajectory(
     N::Int,
     tf::T,
-    initial_configuration::AbstractVector{T},
-    final_configuration::AbstractVector{T},
-    initial_velocity::AbstractVector{T},
-    final_velocity::AbstractVector{T},
+    q₀::AbstractVector{T},
+    q₁::AbstractVector{T},
+    q̇₀::AbstractVector{T},
+    q̇₁::AbstractVector{T},
 ) where {T}
     ts = collect(LinRange(T(0), tf, N))
     nt = length(ts)
@@ -83,8 +83,8 @@ function straight_line_trajectory(
 
     for (i, t) in enumerate(ts)
         α = t / tf
-        qs[i] = (1 - α) .* initial_configuration .+ α .* final_configuration
-        vs[i] = (1 - α) .* initial_velocity .+ α .* final_velocity
+        qs[i] = (1 - α) .* q₀ .+ α .* q₁
+        vs[i] = (1 - α) .* q̇₀ .+ α .* q̇₁
     end
 
     return ts, qs, vs
