@@ -90,20 +90,20 @@ function state(trajectory::DiscreteTrajectory, ::Val{N}) where {N}
 end
 function state_trajectory(trajectory::DiscreteTrajectory)
     nk = length(time(trajectory))
-    return [state(trajectory, i) for i in 1:nk]
+    return [state(trajectory, i) for i = 1:nk]
 end
 
 function position_trajectory(trajectory::DiscreteTrajectory)
     nk = length(time(trajectory))
     np = npositions(trajectory)
-    return [state(trajectory, i)[1:np] for i in 1:nk]
+    return [state(trajectory, i)[1:np] for i = 1:nk]
 end
 
 function velocity_trajectory(trajectory::DiscreteTrajectory)
     nk = length(time(trajectory))
     np = npositions(trajectory)
     nv = nvelocities(trajectory)
-    return [state(trajectory, i)[np+1:np+nv] for i in 1:nk]
+    return [state(trajectory, i)[(np+1):(np+nv)] for i = 1:nk]
 end
 
 function control(trajectory::DiscreteTrajectory, idx::Int)
@@ -120,13 +120,10 @@ function control(trajectory::DiscreteTrajectory, ::Val{N}) where {N}
 end
 function control_trajectory(trajectory::DiscreteTrajectory)
     nk = length(time(trajectory))
-    return [control(trajectory, i) for i in 1:nk]
+    return [control(trajectory, i) for i = 1:nk]
 end
 
 function noncontiguous_knots(trajectory::DiscreteTrajectory; useview::Bool = true)
     nk = length(time(trajectory))
-    return [
-        knotpoints(trajectory, i; useview=useview)
-        for i in 1:nk
-    ]
+    return [knotpoints(trajectory, i; useview = useview) for i = 1:nk]
 end

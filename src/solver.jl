@@ -58,11 +58,16 @@ primal(solver::SQPSolver) = solver.x
 
 get_settings(solver::SQPSolver) = solver.settings
 
-function initialize_trajectory(mechanism::Mechanism{T}, N::Int, tf::T, nu::Int,
+function initialize_trajectory(
+    mechanism::Mechanism{T},
+    N::Int,
+    tf::T,
+    nu::Int,
     q₀::AbstractVector{T},
     q₁::AbstractVector{T},
     q̇₀::AbstractVector{T},
-    q̇₁::AbstractVector{T}) where {T}
+    q̇₁::AbstractVector{T},
+) where {T}
     nq = num_positions(mechanism)
     nv = num_velocities(mechanism)
 

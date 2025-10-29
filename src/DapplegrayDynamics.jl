@@ -46,7 +46,16 @@ function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
         state_equality_constraint(xf, knotpointsize, N),
     ]
 
-    initial_solution = initialize_trajectory(mechanism, N, tf, nu, zeros(typeof(tf), nq), [π, 0.0], zeros(typeof(tf), nv), zeros(typeof(tf), nv))
+    initial_solution = initialize_trajectory(
+        mechanism,
+        N,
+        tf,
+        nu,
+        zeros(typeof(tf), nq),
+        [π, 0.0],
+        zeros(typeof(tf), nv),
+        zeros(typeof(tf), nv),
+    )
 
     solver = SQPSolver(
         mechanism,
@@ -67,7 +76,7 @@ function load_acrobot()::Mechanism
     parse_urdf(urdf)
 end
 
-function df(urdf::Bool=true)
+function df(urdf::Bool = true)
     mechanism = urdf ? load_acrobot() : doublependulum()
     acrobot_swingup(mechanism, 50, 10.0)
 end
@@ -99,7 +108,16 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
         state_equality_constraint(xf, knotpointsize, N),
     ]
 
-    initial_solution = initialize_trajectory(mechanism, N, tf, nu, zeros(typeof(tf), nq), [Float64(π)], zeros(typeof(tf), nv), zeros(typeof(tf), nv))
+    initial_solution = initialize_trajectory(
+        mechanism,
+        N,
+        tf,
+        nu,
+        zeros(typeof(tf), nq),
+        [Float64(π)],
+        zeros(typeof(tf), nv),
+        zeros(typeof(tf), nv),
+    )
 
     solver = SQPSolver(
         mechanism,
