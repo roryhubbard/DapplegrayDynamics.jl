@@ -170,12 +170,12 @@ function hermite_simpson_compressed(
     xₖ₊₁ - xₖ - Δt / 6 * (ẋₖ + 4 * ẋₘ + ẋₖ₊₁)
 end
 
-struct HermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
+struct CompressedHermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
     mechanism::Mechanism{T}
     idx::UnitRange{Int}
     nknots::Int
     outputdim::Int
-    function HermiteSimpsonConstraint(
+    function CompressedHermiteSimpsonConstraint(
         mechanism::Mechanism{T},
         idx::UnitRange{Int},
     ) where {T}
@@ -183,10 +183,10 @@ struct HermiteSimpsonConstraint{T} <: AdjacentKnotPointsFunction
         new{T}(mechanism, idx, 2, outputdim)
     end
 end
-function (con::HermiteSimpsonConstraint)(z::DiscreteTrajectory)
+function (con::CompressedHermiteSimpsonConstraint)(z::DiscreteTrajectory)
     Δt = timesteps(z)
-    @assert length(Δt) == 2 "HermiteSimpsonConstraint expects two knotpoints and therefore 2 timesteps, but received $(length(Δt))"
-    @assert length(knotpoints(z)) == knotpointsize(z) * nknots(con) "HermiteSimpsonConstraint expects knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(knotpoints(z)))"
+    @assert length(Δt) == 2 "CompressedHermiteSimpsonConstraint expects two knotpoints and therefore 2 timesteps, but received $(length(Δt))"
+    @assert length(knotpoints(z)) == knotpointsize(z) * nknots(con) "CompressedHermiteSimpsonConstraint expects knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(knotpoints(z)))"
     xₖ, xₖ₊₁ = state(z, Val(2))
     uₖ, uₖ₊₁ = control(z, Val(2))
     hermite_simpson_compressed(con.mechanism, first(Δt), xₖ, uₖ, xₖ₊₁, uₖ₊₁)

@@ -124,7 +124,7 @@ function evaluate_constraints(
 ) where {Ts,Tk}
     # TODO: preallocate before here
     result = Vector{Tk}()
-    for constraint in constraints
+    for constraint ∈ constraints
         val = constraint(Val(Stack), Z)
         append!(result, val)
     end

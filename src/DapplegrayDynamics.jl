@@ -41,7 +41,7 @@ function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     inequality_constraints =
         [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
     equality_constraints = [
-        HermiteSimpsonConstraint(mechanism, 1:(N-1)),
+        CompressedHermiteSimpsonConstraint(mechanism, 1:(N-1)),
         state_equality_constraint(x0, knotpointsize, 1),
         state_equality_constraint(xf, knotpointsize, N),
     ]
@@ -103,7 +103,7 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     inequality_constraints =
         [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
     equality_constraints = [
-        HermiteSimpsonConstraint(mechanism, 1:(N-1)),
+        CompressedHermiteSimpsonConstraint(mechanism, 1:(N-1)),
         state_equality_constraint(x0, knotpointsize, 1),
         state_equality_constraint(xf, knotpointsize, N),
     ]
