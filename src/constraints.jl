@@ -200,7 +200,15 @@ function (con::CompressedHermiteSimpsonConstraint)(z::DiscreteTrajectory)
     @assert length(knotpoints(z)) == knotpointsize(z) * nknots(con) "CompressedHermiteSimpsonConstraint expects knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(knotpoints(z)))"
     xₖ, xₖ₊₁ = state(z, Val(2))
     uₖ, uₖ₊₁ = control(z, Val(2))
-    compressed_hermite_simpson(con.mechanism, first(Δt), xₖ, uₖ, xₖ₊₁, uₖ₊₁, con.active_joint_indices)
+    compressed_hermite_simpson(
+        con.mechanism,
+        first(Δt),
+        xₖ,
+        uₖ,
+        xₖ₊₁,
+        uₖ₊₁,
+        con.active_joint_indices,
+    )
 end
 
 struct SeparatedHermiteSimpsonConstraint{T} <: HermiteSimpsonConstraint
@@ -225,5 +233,15 @@ function (con::SeparatedHermiteSimpsonConstraint)(z::DiscreteTrajectory)
     xₖ, xₘ, xₖ₊₁ = state(z, Val(3))
     uₖ, uₘ, uₖ₊₁ = control(z, Val(3))
     h = Δt[1] + Δt[2]
-    separated_hermite_simpson(con.mechanism, h, xₖ, uₖ, xₘ, uₘ, xₖ₊₁, uₖ₊₁, con.active_joint_indices)
+    separated_hermite_simpson(
+        con.mechanism,
+        h,
+        xₖ,
+        uₖ,
+        xₘ,
+        uₘ,
+        xₖ₊₁,
+        uₖ₊₁,
+        con.active_joint_indices,
+    )
 end

@@ -118,7 +118,7 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
         [Float64(π)],
         zeros(typeof(tf), nv),
         zeros(typeof(tf), nv),
-        true  # add midpoints because of the separated hermite simpson constraint
+        true,  # add midpoints because of the separated hermite simpson constraint
     )
 
     solver = SQPSolver(
