@@ -102,18 +102,18 @@ function state_equality_constraint(
 end
 
 function separated_hermite_simpson(
-    mechanism::Mechanism{T},
+    mechanism::Mechanism{Tm},
     Δt::Real,
-    xₖ::AbstractVector{T},
-    uₖ::AbstractVector{T},
-    xₖ₊₁::AbstractVector{T},
-    uₖ₊₁::AbstractVector{T},
-    xₘ::AbstractVector{T},
-    uₘ::AbstractVector{T},
+    xₖ::AbstractVector{Tk},
+    uₖ::AbstractVector{Tk},
+    xₘ::AbstractVector{Tk},
+    uₘ::AbstractVector{Tk},
+    xₖ₊₁::AbstractVector{Tk},
+    uₖ₊₁::AbstractVector{Tk},
     active_joint_indices::Vector{Int},
-) where {T}
-    mechanismstate = MechanismState(mechanism)
-    dynamicsresult = DynamicsResult(mechanism)
+) where {Tm,Tk}
+    mechanismstate = MechanismState{Tk}(mechanism)
+    dynamicsresult = DynamicsResult{Tk}(mechanism)
 
     # TODO: remove memory allocation
     τₖ = zeros(Tk, num_positions(mechanism))
@@ -127,13 +127,16 @@ function separated_hermite_simpson(
     ẋₖ₊₁ = similar(xₖ₊₁)
     dynamics!(ẋₖ₊₁, dynamicsresult, mechanismstate, xₖ₊₁, τₖ₊₁)
 
-    τₘ = vcat(0.0, uₘ)
+    # TODO: remove memory allocation
+    τₘ = zeros(Tk, num_positions(mechanism))
+    τₘ[active_joint_indices] = uₘ
     ẋₘ = similar(xₖ)
     dynamics!(ẋₘ, dynamicsresult, mechanismstate, xₘ, τₘ)
 
     c₁ = xₖ₊₁ - xₖ - Δt / 6 * (ẋₖ + 4 * ẋₘ + ẋₖ₊₁)
     c₂ = ẋₘ - 1 / 2 * (xₖ + xₖ₊₁) - Δt / 8 * (ẋₖ - ẋₖ₊₁)
-    c₁, c₂
+    # TODO: remove memory allocation
+    vcat(c₁, c₂)
 end
 
 function compressed_hermite_simpson(
@@ -212,14 +215,15 @@ struct SeparatedHermiteSimpsonConstraint{T} <: HermiteSimpsonConstraint
         active_joint_indices::Vector{Int},
     ) where {T}
         outputdim = num_positions(mechanism) + num_velocities(mechanism)
-        new{T}(mechanism, idx, 2, outputdim, active_joint_indices)
+        new{T}(mechanism, idx, 3, 2*outputdim, active_joint_indices)
     end
 end
 function (con::SeparatedHermiteSimpsonConstraint)(z::DiscreteTrajectory)
     Δt = timesteps(z)
-    @assert length(Δt) == 2 "SeparatedHermiteSimpsonConstraint expects two knotpoints and therefore 2 timesteps, but received $(length(Δt))"
+    @assert length(Δt) == 3 "SeparatedHermiteSimpsonConstraint expects three knotpoints and therefore 3 timesteps, but received $(length(Δt))"
     @assert length(knotpoints(z)) == knotpointsize(z) * nknots(con) "SeparatedHermiteSimpsonConstraint expects knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(knotpoints(z)))"
-    xₖ, xₖ₊₁ = state(z, Val(2))
-    uₖ, uₖ₊₁ = control(z, Val(2))
-    separated_hermite_simpson(con.mechanism, first(Δt), xₖ, uₖ, xₖ₊₁, uₖ₊₁, con.active_joint_indices)
+    xₖ, xₘ, xₖ₊₁ = state(z, Val(3))
+    uₖ, uₘ, uₖ₊₁ = control(z, Val(3))
+    h = Δt[1] + Δt[2]
+    separated_hermite_simpson(con.mechanism, h, xₖ, uₖ, xₘ, uₘ, xₖ₊₁, uₖ₊₁, con.active_joint_indices)
 end

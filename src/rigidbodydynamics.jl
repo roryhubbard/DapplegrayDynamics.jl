@@ -74,7 +74,9 @@ function straight_line_trajectory(
     q₁::AbstractVector{T},
     v₀::AbstractVector{T},
     v₁::AbstractVector{T},
+    add_midpoints::Bool = false,
 ) where {T}
+    N = add_midpoints ? 2N-1 : N
     ts = collect(LinRange(T(0), tf, N))
     nt = length(ts)
 

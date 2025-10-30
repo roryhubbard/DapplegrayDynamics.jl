@@ -55,6 +55,7 @@ function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
         [π, 0.0],
         zeros(typeof(tf), nv),
         zeros(typeof(tf), nv),
+        false,
     )
 
     solver = SQPSolver(
@@ -117,6 +118,7 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
         [Float64(π)],
         zeros(typeof(tf), nv),
         zeros(typeof(tf), nv),
+        true  # add midpoints because of the separated hermite simpson constraint
     )
 
     solver = SQPSolver(
