@@ -26,12 +26,12 @@ struct SQPSolver{T}
         end
         if isnothing(settings)
             settings = Clarabel.Settings(
-                max_iter            = 10,
-                time_limit          = 60,
-                verbose             = true,
-                max_step_fraction   = 0.99,
-                tol_gap_abs         = 1e-8,
-                tol_gap_rel         = 1e-8,
+                max_iter = 10,
+                time_limit = 60,
+                verbose = true,
+                max_step_fraction = 0.99,
+                tol_gap_abs = 1e-8,
+                tol_gap_rel = 1e-8,
             )
         end
 
@@ -58,23 +58,38 @@ primal(solver::SQPSolver) = solver.x
 
 get_settings(solver::SQPSolver) = solver.settings
 
-function initialize_trajectory(mechanism::Mechanism{T}, tf::T, Δt::T, nu::Int) where {T}
-    ts, qs, vs = simulate_mechanism(mechanism, tf, Δt, zeros(T, 2), zeros(T, 2))
+function initialize_trajectory(
+    mechanism::Mechanism{T},
+    N::Int,
+    tf::T,
+    nu::Int,
+    q₀::AbstractVector{T},
+    q₁::AbstractVector{T},
+    v₀::AbstractVector{T},
+    v₁::AbstractVector{T},
+    add_midpoints::Bool = false,
+) where {T}
+    nq = num_positions(mechanism)
+    nv = num_velocities(mechanism)
+
+    ts, qs, vs = straight_line_trajectory(N, tf, q₀, q₁, v₀, v₁, add_midpoints)
 
     N = length(ts)
-    nx = num_positions(mechanism) + num_velocities(mechanism)
+    nx = nq + nv
     knotpointsize = nx + nu
     num_decision_variables = N * knotpointsize
     zero_control_vector = zeros(nu)
 
-    timesteps = fill(T(Δt), N)
+    timesteps = diff(ts)
+    # timesteps needs to be the same length as timestamps
+    push!(timesteps, last(timesteps))
+
     knotpoints = Vector{T}(undef, num_decision_variables)
 
     for i = 1:N
         idx₀ = (i - 1) * knotpointsize + 1
         idx₁ = idx₀ + knotpointsize - 1
-        knotpoint = [qs[i]; vs[i]; zero_control_vector]
-        knotpoints[idx₀:idx₁] = knotpoint
+        knotpoints[idx₀:idx₁] = [qs[i]; vs[i]; zero_control_vector]
     end
 
     DiscreteTrajectory(ts, timesteps, knotpoints, knotpointsize, nx)
@@ -110,7 +125,7 @@ function evaluate_constraints(
 ) where {Ts,Tk}
     # TODO: preallocate before here
     result = Vector{Tk}()
-    for constraint in constraints
+    for constraint ∈ constraints
         val = constraint(Val(Stack), Z)
         append!(result, val)
     end

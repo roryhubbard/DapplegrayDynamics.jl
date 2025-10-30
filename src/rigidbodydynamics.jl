@@ -54,14 +54,40 @@ end
 
 function simulate_mechanism(
     mechansim::Mechanism{T},
-    finaltime::T,
-    Δt::T,
-    initial_configuration::AbstractVector{T},
-    initial_velocity::AbstractVector{T},
+    N::Int,
+    tf::T,
+    q₀::AbstractVector{T},
+    v₀::AbstractVector{T},
 ) where {T}
     state = MechanismState(mechansim)
-    set_configuration!(state, initial_configuration)
-    set_velocity!(state, initial_velocity)
+    set_configuration!(state, q₀)
+    set_velocity!(state, v₀)
 
-    simulate(state, finaltime, Δt = Δt);
+    Δt = tf / (N - 1)  # time step (sec)
+    simulate(state, tf, Δt = Δt);
+end
+
+function straight_line_trajectory(
+    N::Int,
+    tf::T,
+    q₀::AbstractVector{T},
+    q₁::AbstractVector{T},
+    v₀::AbstractVector{T},
+    v₁::AbstractVector{T},
+    add_midpoints::Bool = false,
+) where {T}
+    N = add_midpoints ? 2N-1 : N
+    ts = collect(LinRange(T(0), tf, N))
+    nt = length(ts)
+
+    qs = Vector{Vector{T}}(undef, nt)
+    vs = Vector{Vector{T}}(undef, nt)
+
+    for (i, t) in enumerate(ts)
+        α = t / tf
+        qs[i] = (1 - α) .* q₀ .+ α .* q₁
+        vs[i] = (1 - α) .* v₀ .+ α .* v₁
+    end
+
+    return ts, qs, vs
 end
