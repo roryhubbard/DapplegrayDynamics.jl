@@ -101,9 +101,6 @@ function state_equality_constraint(
     state_equality_constraint(xd, knotpointsize, idx:idx)
 end
 
-# TODO: dynamics! assumes fully actuated systems, figure out a method for
-# dealing with control vectors that are smaller in rank than the vector of
-# "velocities" in mechanism state
 function separated_hermite_simpson(
     mechanism::Mechanism{T},
     Δt::Real,
@@ -113,17 +110,20 @@ function separated_hermite_simpson(
     uₖ₊₁::AbstractVector{T},
     xₘ::AbstractVector{T},
     uₘ::AbstractVector{T},
+    active_joint_indices::Vector{Int},
 ) where {T}
     mechanismstate = MechanismState(mechanism)
     dynamicsresult = DynamicsResult(mechanism)
 
-    # TODO: remove this hardcode nullification of one of the actuators, see TODO
-    # above
-    τₖ = vcat(0.0, uₖ)
+    # TODO: remove memory allocation
+    τₖ = zeros(Tk, num_positions(mechanism))
+    τₖ[active_joint_indices] = uₖ
     ẋₖ = similar(xₖ)
     dynamics!(ẋₖ, dynamicsresult, mechanismstate, xₖ, τₖ)
 
-    τₖ₊₁ = vcat(0.0, uₖ₊₁)
+    # TODO: remove memory allocation
+    τₖ₊₁ = zeros(Tk, num_positions(mechanism))
+    τₖ₊₁[active_joint_indices] = uₖ₊₁
     ẋₖ₊₁ = similar(xₖ₊₁)
     dynamics!(ẋₖ₊₁, dynamicsresult, mechanismstate, xₖ₊₁, τₖ₊₁)
 
@@ -135,6 +135,7 @@ function separated_hermite_simpson(
     c₂ = ẋₘ - 1 / 2 * (xₖ + xₖ₊₁) - Δt / 8 * (ẋₖ - ẋₖ₊₁)
     c₁, c₂
 end
+
 function compressed_hermite_simpson(
     mechanism::Mechanism{Tm},
     Δt::Real,
@@ -142,17 +143,20 @@ function compressed_hermite_simpson(
     uₖ::AbstractVector{Tk},
     xₖ₊₁::AbstractVector{Tk},
     uₖ₊₁::AbstractVector{Tk},
+    active_joint_indices::Vector{Int},
 ) where {Tm,Tk}
     mechanismstate = MechanismState{Tk}(mechanism)
     dynamicsresult = DynamicsResult{Tk}(mechanism)
 
-    # TODO: remove this hardcode nullification of one of the actuators, see TODO
-    # above
-    τₖ = vcat(0.0, uₖ)
+    # TODO: remove memory allocation
+    τₖ = zeros(Tk, num_positions(mechanism))
+    τₖ[active_joint_indices] = uₖ
     ẋₖ = similar(xₖ)
     dynamics!(ẋₖ, dynamicsresult, mechanismstate, xₖ, τₖ)
 
-    τₖ₊₁ = vcat(0.0, uₖ₊₁)
+    # TODO: remove memory allocation
+    τₖ₊₁ = zeros(Tk, num_positions(mechanism))
+    τₖ₊₁[active_joint_indices] = uₖ₊₁
     ẋₖ₊₁ = similar(xₖ₊₁)
     dynamics!(ẋₖ₊₁, dynamicsresult, mechanismstate, xₖ₊₁, τₖ₊₁)
 
@@ -177,12 +181,14 @@ struct CompressedHermiteSimpsonConstraint{T} <: HermiteSimpsonConstraint
     idx::UnitRange{Int}
     nknots::Int
     outputdim::Int
+    active_joint_indices::Vector{Int}
     function CompressedHermiteSimpsonConstraint(
         mechanism::Mechanism{T},
         idx::UnitRange{Int},
+        active_joint_indices::Vector{Int},
     ) where {T}
         outputdim = num_positions(mechanism) + num_velocities(mechanism)
-        new{T}(mechanism, idx, 2, outputdim)
+        new{T}(mechanism, idx, 2, outputdim, active_joint_indices)
     end
 end
 function (con::CompressedHermiteSimpsonConstraint)(z::DiscreteTrajectory)
@@ -191,7 +197,7 @@ function (con::CompressedHermiteSimpsonConstraint)(z::DiscreteTrajectory)
     @assert length(knotpoints(z)) == knotpointsize(z) * nknots(con) "CompressedHermiteSimpsonConstraint expects knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(knotpoints(z)))"
     xₖ, xₖ₊₁ = state(z, Val(2))
     uₖ, uₖ₊₁ = control(z, Val(2))
-    compressed_hermite_simpson(con.mechanism, first(Δt), xₖ, uₖ, xₖ₊₁, uₖ₊₁)
+    compressed_hermite_simpson(con.mechanism, first(Δt), xₖ, uₖ, xₖ₊₁, uₖ₊₁, con.active_joint_indices)
 end
 
 struct SeparatedHermiteSimpsonConstraint{T} <: HermiteSimpsonConstraint
@@ -199,12 +205,14 @@ struct SeparatedHermiteSimpsonConstraint{T} <: HermiteSimpsonConstraint
     idx::UnitRange{Int}
     nknots::Int
     outputdim::Int
+    active_joint_indices::Vector{Int}
     function SeparatedHermiteSimpsonConstraint(
         mechanism::Mechanism{T},
         idx::UnitRange{Int},
+        active_joint_indices::Vector{Int},
     ) where {T}
         outputdim = num_positions(mechanism) + num_velocities(mechanism)
-        new{T}(mechanism, idx, 2, outputdim)
+        new{T}(mechanism, idx, 2, outputdim, active_joint_indices)
     end
 end
 function (con::SeparatedHermiteSimpsonConstraint)(z::DiscreteTrajectory)
@@ -213,5 +221,5 @@ function (con::SeparatedHermiteSimpsonConstraint)(z::DiscreteTrajectory)
     @assert length(knotpoints(z)) == knotpointsize(z) * nknots(con) "SeparatedHermiteSimpsonConstraint expects knotpoint vector length $(knotpointsize(z) * nknots(con)) but received $(length(knotpoints(z)))"
     xₖ, xₖ₊₁ = state(z, Val(2))
     uₖ, uₖ₊₁ = control(z, Val(2))
-    separated_hermite_simpson(con.mechanism, first(Δt), xₖ, uₖ, xₖ₊₁, uₖ₊₁)
+    separated_hermite_simpson(con.mechanism, first(Δt), xₖ, uₖ, xₖ₊₁, uₖ₊₁, con.active_joint_indices)
 end

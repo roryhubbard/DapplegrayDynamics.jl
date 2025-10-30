@@ -65,13 +65,13 @@ function initialize_trajectory(
     nu::Int,
     q₀::AbstractVector{T},
     q₁::AbstractVector{T},
-    q̇₀::AbstractVector{T},
-    q̇₁::AbstractVector{T},
+    v₀::AbstractVector{T},
+    v₁::AbstractVector{T},
 ) where {T}
     nq = num_positions(mechanism)
     nv = num_velocities(mechanism)
 
-    ts, qs, vs = straight_line_trajectory(N, tf, q₀, q₁, q̇₀, q̇₁)
+    ts, qs, vs = straight_line_trajectory(N, tf, q₀, q₁, v₀, v₁)
 
     N = length(ts)
     nx = nq + nv
