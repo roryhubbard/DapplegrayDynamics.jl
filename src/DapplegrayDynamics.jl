@@ -1,6 +1,7 @@
 module DapplegrayDynamics
 
 using Clarabel
+using DiffResults
 using ForwardDiff
 using LinearAlgebra
 using RigidBodyDynamics

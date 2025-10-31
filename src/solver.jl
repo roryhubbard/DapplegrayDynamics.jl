@@ -145,6 +145,21 @@ function super_jacobian(
     ForwardDiff.jacobian(fwrapped, z)
 end
 
+function super_hessian_objective(
+    objectives::AbstractVector{<:AdjacentKnotPointsFunction},
+    Z::DiscreteTrajectory,
+)
+    z = knotpoints(Z)
+    # Rest assured, no copying happening here
+    fwrapped(z) = evaluate_objective(
+        objectives,
+        DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)),
+    )
+    result = DiffResults.HessianResult(z)
+    result = ForwardDiff.hessian!(result, fwrapped, z)
+    DiffResults.value(result), DiffResults.gradient(result), DiffResults.hessian(result)
+end
+
 negate!(x::AbstractArray) = x .*= -1
 
 """
@@ -191,7 +206,7 @@ function solve_qp(
     (solution.x, solution.z)
 end
 
-function solve!(solver::SQPSolver{T}) where {T}
+function solve!(solver::SQPSolver{T}, custom_gradients::Bool = true) where {T}
     settings = get_settings(solver)
     for k = 1:settings.max_iter
         x = primal(solver)
@@ -203,17 +218,22 @@ function solve!(solver::SQPSolver{T}) where {T}
         v = equality_duals(solver)
         println("dual v $(length(v)): ", v)
 
-        f = evaluate_objective(objectives(solver), primal(solver))
+        if custom_gradients
+            f, ▽f, ▽²f = super_hessian_objective(objectives(solver), primal(solver))
+        else
+            f = evaluate_objective(objectives(solver), primal(solver))
+            ▽f = gradient(Val(Sum), objectives(solver), primal(solver))
+            ▽²f = hessian(objectives(solver), primal(solver))
+        end
         println("f $(length(f)): ", f)
+        println("▽f $(size(▽f)): ", ▽f)
+        println("▽²f $(size(▽²f)): ", ▽²f)
 
         g = evaluate_constraints(inequality_constraints(solver), primal(solver))
         println("g $(size(g)): ", g)
 
         h = evaluate_constraints(equality_constraints(solver), primal(solver))
         println("h $(size(h)): ", h)
-
-        ▽f = gradient(Val(Sum), objectives(solver), primal(solver))
-        println("▽f $(size(▽f)): ", ▽f)
 
         Jg = jacobian(inequality_constraints(solver), primal(solver))
         println("Jg $(size(Jg)): ", Jg)
@@ -227,8 +247,6 @@ function solve!(solver::SQPSolver{T}) where {T}
         ▽L = ▽f + Jg' * λ + Jh' * v
         println("▽L $(size(▽L)): ", ▽L)
 
-        ▽²f = hessian(objectives(solver), primal(solver))
-        println("▽²f $(size(▽²f)): ", ▽²f)
 
         ▽²g = vector_hessian(inequality_constraints(solver), primal(solver), λ)
         println("▽²g $(size(▽²g)): ", ▽²g)
