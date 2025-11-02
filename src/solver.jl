@@ -281,9 +281,10 @@ function solve!(solver::SQPSolver{T}, custom_gradients::Bool = false, debug::Boo
         pₖ, lₖ = solve_qp(g, Jg, h, Jh, ▽L, ▽²L, settings)
 
         # solution step
-        knotpoints(primal(solver)) .+= settings.max_step_fraction .* pₖ
-        inequality_duals(solver) .+= settings.max_step_fraction .* @view lₖ[1:length(g)]
-        equality_duals(solver) .+= settings.max_step_fraction .* @view lₖ[(length(g)+1):end]
+        α = settings.max_step_fraction
+        knotpoints(primal(solver)) .+= α .* pₖ
+        inequality_duals(solver) .+= α .* @view lₖ[1:length(g)]
+        equality_duals(solver) .+= α .* @view lₖ[(length(g)+1):end]
 
         if debug
             println("primal x $(length(knotpoints(x))): ", x)
