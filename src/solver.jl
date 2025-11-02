@@ -179,16 +179,25 @@ function super_hessian_constraints(
     # https://github.com/JuliaDiff/ForwardDiff.jl/issues/393
     H = ForwardDiff.jacobian!(H, z -> ForwardDiff.jacobian(fwrapped, z), z)
 
-    ∑H = zeros(T, n, n)
-    H3 = reshape(DiffResults.jacobian(H)', n, n, :)
-    @assert length(λ) == size(H3, 3) "length of dual variable vector $length(λ)) ≠ hessian stack depth $(size(H3, 3))"
-    @inbounds for k = 1:length(λ)
-        sliceₖ = @view H3[:, :, k]
-        sliceₖ .*= λ[k]
-        ∑H .+= sliceₖ
-    end
+    # Outer Jacobian as 3-tensor: (i,j,k) = (output, ∂/∂z_j, ∂/∂z_k)
+    G3 = reshape(DiffResults.jacobian(H), m, n, n)
+    H3 = PermutedDimsArray(G3, (2, 3, 1))  # (n, n, m), one Hessian per output
 
-    evaluate_constraints(constraints, Z), reshape(DiffResults.value(H), m, n), Symmetric(∑H)
+    @assert length(λ) == size(H3, 3) "length(λ)=$(length(λ)) ≠ Hessian stack depth $(size(H3, 3))"
+
+    ∑H = zeros(T, n, n)
+    # λ-weighted sum of Hessians (no mutation of H3)
+    @inbounds @views for k = 1:length(λ)
+        ∑H .+= λ[k] .* H3[:, :, k]
+    end
+    # numeric symmetrization before wrapping to handle autodiff noise, maybe not
+    # necessary?
+    ∑H .= (∑H .+ ∑H') .* T(0.5)
+
+    cval = evaluate_constraints(constraints, Z)
+    Jmn  = reshape(DiffResults.value(H), m, n)
+
+    cval, Jmn, Symmetric(∑H)
 end
 
 negate!(x::AbstractArray) = x .*= -1

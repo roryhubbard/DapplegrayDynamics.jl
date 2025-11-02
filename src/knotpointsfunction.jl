@@ -218,11 +218,12 @@ function vector_hessian(
 
     @assert length(λ) == size(H3, 3) "length of dual variable vector $length(λ)) ≠ hessian stack depth $(size(H3, 3))"
 
-    @inbounds for k = 1:length(λ)
-        sliceₖ = @view H3[:, :, k]
-        sliceₖ .*= λ[k]
-        ∑H .+= sliceₖ
+    @inbounds @views for k = 1:length(λ)
+        ∑H .+= λ[k] .* H3[:, :, k]
     end
+    # numeric symmetrization before wrapping to handle autodiff noise, maybe not
+    # necessary?
+    ∑H .= (∑H .+ ∑H') .* T(0.5)
 
     Symmetric(∑H)
 end
