@@ -189,7 +189,7 @@ function super_hessian_constraints(
         ∑H .+= sliceₖ
     end
 
-    y, DiffResults.value(H), Symmetric(∑H)
+    evaluate_constraints(constraints, Z), reshape(DiffResults.value(H), m, n), Symmetric(∑H)
 end
 
 negate!(x::AbstractArray) = x .*= -1
