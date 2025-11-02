@@ -65,7 +65,7 @@ function gradient(
     funcs::AbstractVector{<:AdjacentKnotPointsFunction},
     Z::DiscreteTrajectory{T},
 ) where {T}
-    m = sum(length(indices(func)) for func in funcs)
+    m = sum(length(indices(func)) for func ∈ funcs)
     n = length(knotpoints(Z))
     ▽f_vstacked = zeros(T, m, n)
     for (i, func) ∈ enumerate(funcs)
@@ -104,7 +104,7 @@ function jacobian_singlef!(
     Z::DiscreteTrajectory,
 ) where {T}
     Jheight = outputdim(func)
-    for (i, col₀) in enumerate(indices(func))
+    for (i, col₀) ∈ enumerate(indices(func))
         row₀ = (i - 1) * Jheight + 1
         row₁ = row₀ + Jheight - 1
         col₁ = col₀ + nknots(func) - 1
@@ -148,7 +148,7 @@ function hessian_singlef!(
     func::AdjacentKnotPointsFunction,
     Z::DiscreteTrajectory,
 ) where {T}
-    for (i, col₀) in enumerate(indices(func))
+    for (i, col₀) ∈ enumerate(indices(func))
         col₁ = col₀ + nknots(func) - 1
         colrange = knotpointindices(Z, col₀:col₁)
         z = @view Z[col₀:col₁]
@@ -193,7 +193,7 @@ function vector_hessian_singlef!(
     func::AdjacentKnotPointsFunction,
     Z::DiscreteTrajectory,
 ) where {T}
-    for (i, col₀) in enumerate(indices(func))
+    for (i, col₀) ∈ enumerate(indices(func))
         col₁ = col₀ + nknots(func) - 1
         colrange = knotpointindices(Z, col₀:col₁)
         z = @view Z[col₀:col₁]

@@ -169,7 +169,8 @@ function compressed_hermite_simpson(
     # for the integral of the system dynamics.
     xₘ = 1 / 2 * (xₖ + xₖ₊₁) + Δt / 8 * (ẋₖ - ẋₖ₊₁)
     uₘ = 1 / 2 * (uₖ + uₖ₊₁)
-    τₘ = vcat(0.0, uₘ)
+    τₘ = zeros(Tk, num_positions(mechanism))
+    τₘ[active_joint_indices] = uₘ
     ẋₘ = similar(xₖ)
     dynamics!(ẋₘ, dynamicsresult, mechanismstate, xₘ, τₘ)
 
