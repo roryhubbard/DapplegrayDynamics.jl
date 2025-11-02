@@ -1,6 +1,7 @@
 module DapplegrayDynamics
 
 using Clarabel
+using DiffResults
 using ForwardDiff
 using LinearAlgebra
 using RigidBodyDynamics
@@ -55,7 +56,6 @@ function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
         [π, 0.0],
         zeros(typeof(tf), nv),
         zeros(typeof(tf), nv),
-        false,
     )
 
     solver = SQPSolver(
@@ -104,7 +104,7 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     inequality_constraints =
         [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
     equality_constraints = [
-        SeparatedHermiteSimpsonConstraint(mechanism, 1:(N-1), [1]),
+        SeparatedHermiteSimpsonConstraint(mechanism, 1:(N-2), [1]),
         state_equality_constraint(x0, knotpointsize, 1),
         state_equality_constraint(xf, knotpointsize, N),
     ]
@@ -118,7 +118,6 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
         [Float64(π)],
         zeros(typeof(tf), nv),
         zeros(typeof(tf), nv),
-        true,  # add midpoints because of the separated hermite simpson constraint
     )
 
     solver = SQPSolver(

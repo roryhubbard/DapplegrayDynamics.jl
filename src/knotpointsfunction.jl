@@ -65,7 +65,7 @@ function gradient(
     funcs::AbstractVector{<:AdjacentKnotPointsFunction},
     Z::DiscreteTrajectory{T},
 ) where {T}
-    m = sum(length(indices(func)) for func in funcs)
+    m = sum(length(indices(func)) for func ∈ funcs)
     n = length(knotpoints(Z))
     ▽f_vstacked = zeros(T, m, n)
     for (i, func) ∈ enumerate(funcs)
@@ -104,7 +104,7 @@ function jacobian_singlef!(
     Z::DiscreteTrajectory,
 ) where {T}
     Jheight = outputdim(func)
-    for (i, col₀) in enumerate(indices(func))
+    for (i, col₀) ∈ enumerate(indices(func))
         row₀ = (i - 1) * Jheight + 1
         row₁ = row₀ + Jheight - 1
         col₁ = col₀ + nknots(func) - 1
@@ -148,7 +148,7 @@ function hessian_singlef!(
     func::AdjacentKnotPointsFunction,
     Z::DiscreteTrajectory,
 ) where {T}
-    for (i, col₀) in enumerate(indices(func))
+    for col₀ ∈ indices(func)
         col₁ = col₀ + nknots(func) - 1
         colrange = knotpointindices(Z, col₀:col₁)
         z = @view Z[col₀:col₁]
@@ -164,36 +164,30 @@ function hessian(
 ) where {T}
     n = length(knotpoints(Z))
     H = zeros(T, n, n)
-    for (i, func) ∈ enumerate(funcs)
-        # TODO: we're just overwriting the same Hessian matrix for every function. Fix this!
-        hessian_singlef!(H, func, Z)
-    end
-    H
+    # this assumes that no objective operates on the same part of the trajectory
+    # since this overwrites a sublock of the hessian
+    foreach(f -> hessian_singlef!(H, f, Z), funcs)
+    Symmetric(H)
 end
 
 function vector_hessian_impl!(
     H::AbstractMatrix{T},
-    J::AbstractMatrix{T},
     func::AdjacentKnotPointsFunction,
     Z::DiscreteTrajectory,
 ) where {T}
     z = knotpoints(Z)
-    function inner_jacobian!(z::AbstractVector{T}) where {T}
-        z = knotpoints(Z)
-        f = unary_func(func, Z)
-        ForwardDiff.jacobian!(J, f, z)
-        vec(J)  # does not copy
-    end
-    ForwardDiff.jacobian!(H, inner_jacobian!, z)
+    f = unary_func(func, Z)
+    # TODO: can't use ForwardDiff.jacobian! for innner jacobian
+    # https://github.com/JuliaDiff/ForwardDiff.jl/issues/393
+    ForwardDiff.jacobian!(H, z -> ForwardDiff.jacobian(f, z), z)
 end
 
 function vector_hessian_singlef!(
     H::AbstractMatrix{T},
-    J::AbstractMatrix{T},
     func::AdjacentKnotPointsFunction,
     Z::DiscreteTrajectory,
 ) where {T}
-    for (i, col₀) in enumerate(indices(func))
+    for (i, col₀) ∈ enumerate(indices(func))
         col₁ = col₀ + nknots(func) - 1
         colrange = knotpointindices(Z, col₀:col₁)
         z = @view Z[col₀:col₁]
@@ -203,36 +197,32 @@ function vector_hessian_singlef!(
         row₁ = row₀ + band_height - 1
 
         block = @view H[row₀:row₁, colrange]
-        vector_hessian_impl!(block, J, func, z)
+        vector_hessian_impl!(block, func, z)
     end
 end
 
 function vector_hessian(
     funcs::AbstractVector{<:AdjacentKnotPointsFunction},
-    Z::DiscreteTrajectory{T},
+    Z::DiscreteTrajectory,
     λ::AbstractVector{T},
 ) where {T}
     n = length(knotpoints(Z))
     m = sum(length(indices(func)) * outputdim(func) * n for func in funcs)
     H = zeros(T, m, n)
 
-    for (i, func) ∈ enumerate(funcs)
-        Jheight = outputdim(func)
-        Jwidth = nknots(func) * knotpointsize(Z)
-        J = zeros(T, Jheight, Jwidth)
-        vector_hessian_singlef!(H, J, func, Z)
-    end
+    foreach(f -> vector_hessian_singlef!(H, f, Z), funcs)
 
     ∑H = zeros(T, n, n)
     H3 = reshape(H', n, n, :)
 
     @assert length(λ) == size(H3, 3) "length of dual variable vector $length(λ)) ≠ hessian stack depth $(size(H3, 3))"
 
-    @inbounds for k = 1:length(λ)
-        sliceₖ = @view H3[:, :, k]
-        sliceₖ .*= λ[k]
-        ∑H .+= sliceₖ
+    @inbounds @views for k = 1:length(λ)
+        ∑H .+= λ[k] .* H3[:, :, k]
     end
+    # numeric symmetrization before wrapping to handle autodiff noise, maybe not
+    # necessary?
+#    ∑H .= (∑H .+ ∑H') .* T(0.5)
 
     Symmetric(∑H)
 end

@@ -1,11 +1,12 @@
 name = "DapplegrayDynamics"
 uuid = "66339b55-5b40-4d14-8f64-063c89b7ed2d"
-authors = ["Rory Hubbard <calvin3h@gmail.com> and contributors"]
 version = "1.0.0-DEV"
+authors = ["Rory Hubbard <calvin3h@gmail.com> and contributors"]
 
 [deps]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 Clarabel = "61c947e1-3e6d-4ee4-985a-eec8c727bd6e"
+DiffResults = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 RigidBodyDynamics = "366cf18f-59d5-5db9-a4de-86a9f6786172"
@@ -15,6 +16,7 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 [compat]
 BenchmarkTools = "1.6.0"
 Clarabel = "0.11.0"
+DiffResults = "1.1.0"
 ForwardDiff = "0.10, 1"
 LinearAlgebra = "1.11"
 RigidBodyDynamics = "2.5.0"

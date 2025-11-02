@@ -67,12 +67,11 @@ function initialize_trajectory(
     q₁::AbstractVector{T},
     v₀::AbstractVector{T},
     v₁::AbstractVector{T},
-    add_midpoints::Bool = false,
 ) where {T}
     nq = num_positions(mechanism)
     nv = num_velocities(mechanism)
 
-    ts, qs, vs = straight_line_trajectory(N, tf, q₀, q₁, v₀, v₁, add_midpoints)
+    ts, qs, vs = straight_line_trajectory(N, tf, q₀, q₁, v₀, v₁)
 
     N = length(ts)
     nx = nq + nv
@@ -145,6 +144,62 @@ function super_jacobian(
     ForwardDiff.jacobian(fwrapped, z)
 end
 
+function super_hessian_objective(
+    objectives::AbstractVector{<:AdjacentKnotPointsFunction},
+    Z::DiscreteTrajectory,
+)
+    z = knotpoints(Z)
+    # Rest assured, no copying happening here
+    fwrapped(z) = evaluate_objective(
+        objectives,
+        DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)),
+    )
+    result = DiffResults.HessianResult(z)
+    result = ForwardDiff.hessian!(result, fwrapped, z)
+    DiffResults.value(result), DiffResults.gradient(result), DiffResults.hessian(result)
+end
+
+function super_hessian_constraints(
+    constraints::AbstractVector{<:AdjacentKnotPointsFunction},
+    Z::DiscreteTrajectory,
+    λ::AbstractVector{T},
+) where {T}
+    z = knotpoints(Z)
+    n = length(z)
+    m = sum(length(indices(con)) * outputdim(con) for con ∈ constraints)
+    y = zeros(T, m * n)
+    H = DiffResults.JacobianResult(y, z)
+
+    fwrapped(z) = evaluate_constraints(
+        constraints,
+        DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)),
+    )
+
+    # TODO: can't use ForwardDiff.jacobian! for innner jacobian
+    # https://github.com/JuliaDiff/ForwardDiff.jl/issues/393
+    H = ForwardDiff.jacobian!(H, z -> ForwardDiff.jacobian(fwrapped, z), z)
+
+    # Outer Jacobian as 3-tensor: (i,j,k) = (output, ∂/∂z_j, ∂/∂z_k)
+    G3 = reshape(DiffResults.jacobian(H), m, n, n)
+    H3 = PermutedDimsArray(G3, (2, 3, 1))  # (n, n, m), one Hessian per output
+
+    @assert length(λ) == size(H3, 3) "length(λ)=$(length(λ)) ≠ Hessian stack depth $(size(H3, 3))"
+
+    ∑H = zeros(T, n, n)
+    # λ-weighted sum of Hessians (no mutation of H3)
+    @inbounds @views for k = 1:length(λ)
+        ∑H .+= λ[k] .* H3[:, :, k]
+    end
+    # numeric symmetrization before wrapping to handle autodiff noise, maybe not
+    # necessary?
+#    ∑H .= (∑H .+ ∑H') .* T(0.5)
+
+    cval = evaluate_constraints(constraints, Z)
+    Jmn  = reshape(DiffResults.value(H), m, n)
+
+    cval, Jmn, Symmetric(∑H)
+end
+
 negate!(x::AbstractArray) = x .*= -1
 
 """
@@ -191,63 +246,69 @@ function solve_qp(
     (solution.x, solution.z)
 end
 
-function solve!(solver::SQPSolver{T}) where {T}
+function solve!(solver::SQPSolver{T}, custom_gradients::Bool = false, debug::Bool = true) where {T}
     settings = get_settings(solver)
     for k = 1:settings.max_iter
         x = primal(solver)
-        println("primal x $(length(knotpoints(x))): ", x)
-
         λ = inequality_duals(solver)
-        println("dual λ $(length(λ)): ", λ)
-
         v = equality_duals(solver)
-        println("dual v $(length(v)): ", v)
 
-        f = evaluate_objective(objectives(solver), primal(solver))
-        println("f $(length(f)): ", f)
+        if custom_gradients
+            f = evaluate_objective(objectives(solver), primal(solver))
+            ▽f = gradient(Val(Sum), objectives(solver), primal(solver))
+            ▽²f = hessian(objectives(solver), primal(solver))
 
-        g = evaluate_constraints(inequality_constraints(solver), primal(solver))
-        println("g $(size(g)): ", g)
+            g = evaluate_constraints(inequality_constraints(solver), primal(solver))
+            Jg = jacobian(inequality_constraints(solver), primal(solver))
+            ▽²g = vector_hessian(inequality_constraints(solver), primal(solver), λ)
 
-        h = evaluate_constraints(equality_constraints(solver), primal(solver))
-        println("h $(size(h)): ", h)
-
-        ▽f = gradient(Val(Sum), objectives(solver), primal(solver))
-        println("▽f $(size(▽f)): ", ▽f)
-
-        Jg = jacobian(inequality_constraints(solver), primal(solver))
-        println("Jg $(size(Jg)): ", Jg)
-
-        Jh = jacobian(equality_constraints(solver), primal(solver))
-        println("Jh $(size(Jh)): ", Jh)
+            h = evaluate_constraints(equality_constraints(solver), primal(solver))
+            Jh = jacobian(equality_constraints(solver), primal(solver))
+            ▽²h = vector_hessian(equality_constraints(solver), primal(solver), v)
+        else
+            f, ▽f, ▽²f = super_hessian_objective(objectives(solver), primal(solver))
+            g, Jg, ▽²g = super_hessian_constraints(inequality_constraints(solver), primal(solver), λ)
+            h, Jh, ▽²h = super_hessian_constraints(equality_constraints(solver), primal(solver), v)
+        end
 
         L = f + λ' * g + v' * h
-        println("L $(size(L)): ", L)
-
         ▽L = ▽f + Jg' * λ + Jh' * v
-        println("▽L $(size(▽L)): ", ▽L)
-
-        ▽²f = hessian(objectives(solver), primal(solver))
-        println("▽²f $(size(▽²f)): ", ▽²f)
-
-        ▽²g = vector_hessian(inequality_constraints(solver), primal(solver), λ)
-        println("▽²g $(size(▽²g)): ", ▽²g)
-
-        ▽²h = vector_hessian(equality_constraints(solver), primal(solver), v)
-        println("▽²h $(size(▽²h)): ", ▽²h)
-
         ▽²L = ▽²f + ▽²g + ▽²h
-        println("▽²L $(size(▽²L)): ", ▽²L)
 
         negate!(Jg)
         negate!(Jh)
+
         pₖ, lₖ = solve_qp(g, Jg, h, Jh, ▽L, ▽²L, settings)
-        println("QP primal pₖ $(length(pₖ)): ", pₖ)
-        println("QP dual lₖ $(length(lₖ)): ", lₖ)
 
         # solution step
-        knotpoints(primal(solver)) .+= settings.max_step_fraction .* pₖ
-        inequality_duals(solver) .+= settings.max_step_fraction .* @view lₖ[1:length(g)]
-        equality_duals(solver) .+= settings.max_step_fraction .* @view lₖ[(length(g)+1):end]
+        α = settings.max_step_fraction
+        knotpoints(primal(solver)) .+= α .* pₖ
+        inequality_duals(solver) .+= α .* @view lₖ[1:length(g)]
+        equality_duals(solver) .+= α .* @view lₖ[(length(g)+1):end]
+
+        if debug
+            println("primal x $(length(knotpoints(x))): ", x)
+            println("dual λ $(length(λ)): ", λ)
+            println("dual v $(length(v)): ", v)
+
+            println("f $(length(f)): ", f)
+            println("▽f $(size(▽f)): ", ▽f)
+            println("▽²f $(size(▽²f)): ", ▽²f)
+
+            println("g $(size(g)): ", g)
+            println("Jg $(size(Jg)): ", Jg)
+            println("▽²g $(size(▽²g)): ", ▽²g)
+
+            println("h $(size(h)): ", h)
+            println("Jh $(size(Jh)): ", Jh)
+            println("▽²h $(size(▽²h)): ", ▽²h)
+
+            println("L $(size(L)): ", L)
+            println("▽L $(size(▽L)): ", ▽L)
+            println("▽²L $(size(▽²L)): ", ▽²L)
+
+            println("QP primal pₖ $(length(pₖ)): ", pₖ)
+            println("QP dual lₖ $(length(lₖ)): ", lₖ)
+        end
     end
 end
