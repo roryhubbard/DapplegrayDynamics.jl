@@ -178,7 +178,17 @@ function super_hessian_constraints(
 
     # TODO: can't use ForwardDiff.jacobian! for innner jacobian, bug report?
     H = ForwardDiff.jacobian!(H, z -> ForwardDiff.jacobian(fwrapped, z), z)
-    DiffResults.value(H), DiffResults.jacobian(H), H
+
+    ∑H = zeros(T, n, n)
+    H3 = reshape(H', n, n, :)
+    @assert length(λ) == size(H3, 3) "length of dual variable vector $length(λ)) ≠ hessian stack depth $(size(H3, 3))"
+    @inbounds for k = 1:length(λ)
+        sliceₖ = @view H3[:, :, k]
+        sliceₖ .*= λ[k]
+        ∑H .+= sliceₖ
+    end
+
+    evaluate_constraints(constraints, Z), DiffResults.value(H), Symmetric(∑H)
 end
 
 negate!(x::AbstractArray) = x .*= -1
