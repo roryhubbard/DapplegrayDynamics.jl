@@ -176,11 +176,12 @@ function super_hessian_constraints(
         DiscreteTrajectory(time(Z), timesteps(Z), z, knotpointsize(Z), nstates(Z)),
     )
 
-    # TODO: can't use ForwardDiff.jacobian! for innner jacobian, bug report?
+    # TODO: can't use ForwardDiff.jacobian! for innner jacobian
+    # https://github.com/JuliaDiff/ForwardDiff.jl/issues/393
     H = ForwardDiff.jacobian!(H, z -> ForwardDiff.jacobian(fwrapped, z), z)
 
     ∑H = zeros(T, n, n)
-    H3 = reshape(H', n, n, :)
+    H3 = reshape(DiffResults.jacobian(H)', n, n, :)
     @assert length(λ) == size(H3, 3) "length of dual variable vector $length(λ)) ≠ hessian stack depth $(size(H3, 3))"
     @inbounds for k = 1:length(λ)
         sliceₖ = @view H3[:, :, k]
@@ -188,7 +189,7 @@ function super_hessian_constraints(
         ∑H .+= sliceₖ
     end
 
-    evaluate_constraints(constraints, Z), DiffResults.value(H), Symmetric(∑H)
+    y, DiffResults.value(H), Symmetric(∑H)
 end
 
 negate!(x::AbstractArray) = x .*= -1
