@@ -165,10 +165,11 @@ function hessian(
     n = length(knotpoints(Z))
     H = zeros(T, n, n)
     for func ∈ funcs
-        # TODO: we're just overwriting the same Hessian matrix for every function. Fix this!
+        # this assumes that no objective operates on the same part of the trajectory
+        # since this overwrites a sublock of the hessian
         hessian_singlef!(H, func, Z)
     end
-    H
+    Symmetric(H)
 end
 
 function vector_hessian_impl!(
@@ -223,7 +224,7 @@ function vector_hessian(
     end
     # numeric symmetrization before wrapping to handle autodiff noise, maybe not
     # necessary?
-    ∑H .= (∑H .+ ∑H') .* T(0.5)
+#    ∑H .= (∑H .+ ∑H') .* T(0.5)
 
     Symmetric(∑H)
 end

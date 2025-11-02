@@ -192,7 +192,7 @@ function super_hessian_constraints(
     end
     # numeric symmetrization before wrapping to handle autodiff noise, maybe not
     # necessary?
-    ∑H .= (∑H .+ ∑H') .* T(0.5)
+#    ∑H .= (∑H .+ ∑H') .* T(0.5)
 
     cval = evaluate_constraints(constraints, Z)
     Jmn  = reshape(DiffResults.value(H), m, n)
