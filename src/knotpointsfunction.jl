@@ -164,11 +164,9 @@ function hessian(
 ) where {T}
     n = length(knotpoints(Z))
     H = zeros(T, n, n)
-    for func ∈ funcs
-        # this assumes that no objective operates on the same part of the trajectory
-        # since this overwrites a sublock of the hessian
-        hessian_singlef!(H, func, Z)
-    end
+    # this assumes that no objective operates on the same part of the trajectory
+    # since this overwrites a sublock of the hessian
+    foreach(f -> hessian_singlef!(H, f, Z), funcs)
     Symmetric(H)
 end
 
