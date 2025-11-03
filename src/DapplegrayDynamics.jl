@@ -3,6 +3,7 @@ module DapplegrayDynamics
 using Clarabel
 using DiffResults
 using ForwardDiff
+using GLMakie
 using LinearAlgebra
 using RigidBodyDynamics
 using SparseArrays
@@ -100,7 +101,7 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
 
     objectives = [LQRCost(Q, R, xf, 1:N)]
 
-    τbound = 3.0
+    τbound = 30.0
     inequality_constraints =
         [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
     equality_constraints = [
@@ -141,7 +142,30 @@ end
 
 function kj()
     mechanism = load_pendulum()
-    pendulum_swingup(mechanism, 50, 10.0)
+    solver = pendulum_swingup(mechanism, 5, 10.0)
+
+    println("********************************** PRINT GUTS **********************************")
+    println("********************************************************************************")
+    for (k, v) in solver.guts
+        println(k)
+        println(v)
+    end
+    primal_solutions = solver.guts[:primal]
+
+    for solution_trajectory ∈ primal_solutions
+        ts = time(solution_trajectory)
+        print("position")
+        println(ts)
+        qs = position_trajectory(solution_trajectory)
+        print("position")
+        println(qs)
+        vs = velocity_trajectory(solution_trajectory)
+        print("velocity")
+        println(vs)
+        us = control_trajectory(solution_trajectory)
+        print("control")
+        println(us)
+    end
 end
 
 end
