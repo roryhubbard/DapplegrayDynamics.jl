@@ -81,7 +81,7 @@ function straight_line_trajectory(
     qs = Vector{Vector{T}}(undef, nt)
     vs = Vector{Vector{T}}(undef, nt)
 
-    for (i, t) in enumerate(ts)
+    for (i, t) ∈ enumerate(ts)
         α = t / tf
         qs[i] = (1 - α) .* q₀ .+ α .* q₁
         vs[i] = (1 - α) .* v₀ .+ α .* v₁

@@ -29,7 +29,7 @@ struct SQPSolver{T}
             settings = Clarabel.Settings(
                 max_iter = 10,
                 time_limit = 60,
-                verbose = true,
+                verbose = false,
                 max_step_fraction = 0.99,
                 tol_gap_abs = 1e-8,
                 tol_gap_rel = 1e-8,
@@ -284,11 +284,11 @@ function solve!(solver::SQPSolver{T}, custom_gradients::Bool = false, expose_gut
         pₖ, lₖ = solve_qp(g, Jg, h, Jh, ▽L, ▽²L, settings)
 
         if expose_guts
-            push!(get!(solver.guts, :primal, Vector{DiscreteTrajectory{T,T}}()), x)
-            push!(get!(solver.guts, :inequality_duals, Vector{Vector{T}}()), λ)
-            push!(get!(solver.guts, :equality_duals, Vector{Vector{T}}()), v)
-            push!(get!(solver.guts, :objective, Vector{T}()), f)
-            push!(get!(solver.guts, :lagrangian, Vector{T}()), L)
+            push!(get!(solver.guts, :primal, Vector{DiscreteTrajectory{T,T}}()), deepcopy(x))
+            push!(get!(solver.guts, :inequality_duals, Vector{Vector{T}}()), deepcopy(λ))
+            push!(get!(solver.guts, :equality_duals, Vector{Vector{T}}()), deepcopy(v))
+            push!(get!(solver.guts, :objective, Vector{T}()), deepcopy(f))
+            push!(get!(solver.guts, :lagrangian, Vector{T}()), deepcopy(L))
         end
 
         # solution step

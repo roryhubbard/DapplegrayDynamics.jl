@@ -101,7 +101,7 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
 
     objectives = [LQRCost(Q, R, xf, 1:N)]
 
-    τbound = 30.0
+    τbound = 3.0
     inequality_constraints =
         [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
     equality_constraints = [
@@ -142,30 +142,41 @@ end
 
 function kj()
     mechanism = load_pendulum()
-    solver = pendulum_swingup(mechanism, 5, 10.0)
+    solver = pendulum_swingup(mechanism, 50, 10.0)
 
     println("********************************** PRINT GUTS **********************************")
     println("********************************************************************************")
-    for (k, v) in solver.guts
+    for (k, _v) in solver.guts
         println(k)
-        println(v)
     end
     primal_solutions = solver.guts[:primal]
 
-    for solution_trajectory ∈ primal_solutions
+    # Create a figure for plotting all trajectories
+    fig = Figure(resolution = (800, 600))
+    ax = Axis(fig[1, 1],
+              xlabel = "θ (theta) [deg]",
+              ylabel = "θ̇ (thetadot) [deg/s]",
+              title = "Pendulum Phase Portrait")
+
+    # Plot each solution trajectory
+    for (idx, solution_trajectory) ∈ enumerate(primal_solutions)
         ts = time(solution_trajectory)
-        print("position")
-        println(ts)
         qs = position_trajectory(solution_trajectory)
-        print("position")
-        println(qs)
         vs = velocity_trajectory(solution_trajectory)
-        print("velocity")
-        println(vs)
         us = control_trajectory(solution_trajectory)
-        print("control")
-        println(us)
+
+        # Extract theta and thetadot for plotting (convert to degrees)
+        theta = [rad2deg(first(q)) for q ∈ qs]
+        thetadot = [rad2deg(first(v)) for v ∈ vs]
+
+        # Plot the trajectory
+        scatterlines!(ax, theta, thetadot, label = "Iteration $idx")
     end
+
+    axislegend(ax, position = :rt)
+    display(fig)
+
+    solver
 end
 
 end
