@@ -193,10 +193,10 @@ function super_hessian_constraints(
     end
     # numeric symmetrization before wrapping to handle autodiff noise, maybe not
     # necessary?
-#    ∑H .= (∑H .+ ∑H') .* T(0.5)
+    #    ∑H .= (∑H .+ ∑H') .* T(0.5)
 
     cval = evaluate_constraints(constraints, Z)
-    Jmn  = reshape(DiffResults.value(H), m, n)
+    Jmn = reshape(DiffResults.value(H), m, n)
 
     cval, Jmn, Symmetric(∑H)
 end
@@ -249,7 +249,11 @@ function solve_qp(
     (solution.x, solution.z)
 end
 
-function solve!(solver::SQPSolver{T}, custom_gradients::Bool = false, expose_guts::Bool = true) where {T}
+function solve!(
+    solver::SQPSolver{T},
+    custom_gradients::Bool = false,
+    expose_guts::Bool = true,
+) where {T}
     settings = get_settings(solver)
     for k = 1:settings.max_iter
         x = primal(solver)
@@ -270,8 +274,10 @@ function solve!(solver::SQPSolver{T}, custom_gradients::Bool = false, expose_gut
             ▽²h = vector_hessian(equality_constraints(solver), primal(solver), v)
         else
             f, ▽f, ▽²f = super_hessian_objective(objectives(solver), primal(solver))
-            g, Jg, ▽²g = super_hessian_constraints(inequality_constraints(solver), primal(solver), λ)
-            h, Jh, ▽²h = super_hessian_constraints(equality_constraints(solver), primal(solver), v)
+            g, Jg, ▽²g =
+                super_hessian_constraints(inequality_constraints(solver), primal(solver), λ)
+            h, Jh, ▽²h =
+                super_hessian_constraints(equality_constraints(solver), primal(solver), v)
         end
 
         L = f + λ' * g + v' * h
@@ -284,7 +290,10 @@ function solve!(solver::SQPSolver{T}, custom_gradients::Bool = false, expose_gut
         pₖ, lₖ = solve_qp(g, Jg, h, Jh, ▽L, ▽²L, settings)
 
         if expose_guts
-            push!(get!(solver.guts, :primal, Vector{DiscreteTrajectory{T,T}}()), deepcopy(x))
+            push!(
+                get!(solver.guts, :primal, Vector{DiscreteTrajectory{T,T}}()),
+                deepcopy(x),
+            )
             push!(get!(solver.guts, :inequality_duals, Vector{Vector{T}}()), deepcopy(λ))
             push!(get!(solver.guts, :equality_duals, Vector{Vector{T}}()), deepcopy(v))
             push!(get!(solver.guts, :objective, Vector{T}()), deepcopy(f))

@@ -222,7 +222,7 @@ function vector_hessian(
     end
     # numeric symmetrization before wrapping to handle autodiff noise, maybe not
     # necessary?
-#    ∑H .= (∑H .+ ∑H') .* T(0.5)
+    #    ∑H .= (∑H .+ ∑H') .* T(0.5)
 
     Symmetric(∑H)
 end

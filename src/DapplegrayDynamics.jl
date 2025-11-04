@@ -144,8 +144,12 @@ function kj()
     mechanism = load_pendulum()
     solver = pendulum_swingup(mechanism, 50, 10.0)
 
-    println("********************************** PRINT GUTS **********************************")
-    println("********************************************************************************")
+    println(
+        "********************************** PRINT GUTS **********************************",
+    )
+    println(
+        "********************************************************************************",
+    )
     for (k, _v) in solver.guts
         println(k)
     end
@@ -153,15 +157,19 @@ function kj()
 
     # Create a figure for plotting all trajectories
     fig = Figure(resolution = (800, 800))
-    ax1 = Axis(fig[1, 1],
-               xlabel = "θ (theta) [deg]",
-               ylabel = "θ̇ (thetadot) [deg/s]",
-               title = "Pendulum Phase Portrait")
+    ax1 = Axis(
+        fig[1, 1],
+        xlabel = "θ (theta) [deg]",
+        ylabel = "θ̇ (thetadot) [deg/s]",
+        title = "Pendulum Phase Portrait",
+    )
 
-    ax2 = Axis(fig[2, 1],
-               xlabel = "Time [s]",
-               ylabel = "Control (τ) [Nm]",
-               title = "Control Trajectories")
+    ax2 = Axis(
+        fig[2, 1],
+        xlabel = "Time [s]",
+        ylabel = "Control (τ) [Nm]",
+        title = "Control Trajectories",
+    )
 
     # Plot each solution trajectory
     for (idx, solution_trajectory) ∈ enumerate(primal_solutions)
