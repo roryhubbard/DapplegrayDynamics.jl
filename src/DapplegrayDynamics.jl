@@ -152,11 +152,16 @@ function kj()
     primal_solutions = solver.guts[:primal]
 
     # Create a figure for plotting all trajectories
-    fig = Figure(resolution = (800, 600))
-    ax = Axis(fig[1, 1],
-              xlabel = "θ (theta) [deg]",
-              ylabel = "θ̇ (thetadot) [deg/s]",
-              title = "Pendulum Phase Portrait")
+    fig = Figure(resolution = (800, 800))
+    ax1 = Axis(fig[1, 1],
+               xlabel = "θ (theta) [deg]",
+               ylabel = "θ̇ (thetadot) [deg/s]",
+               title = "Pendulum Phase Portrait")
+
+    ax2 = Axis(fig[2, 1],
+               xlabel = "Time [s]",
+               ylabel = "Control (τ) [Nm]",
+               title = "Control Trajectories")
 
     # Plot each solution trajectory
     for (idx, solution_trajectory) ∈ enumerate(primal_solutions)
@@ -169,11 +174,18 @@ function kj()
         theta = [rad2deg(first(q)) for q ∈ qs]
         thetadot = [rad2deg(first(v)) for v ∈ vs]
 
-        # Plot the trajectory
-        scatterlines!(ax, theta, thetadot, label = "Iteration $idx")
+        # Extract controls
+        controls = [first(u) for u ∈ us]
+
+        # Plot the phase portrait
+        scatterlines!(ax1, theta, thetadot, label = "Iteration $idx")
+
+        # Plot the control trajectory (note: controls have length N-1)
+        lines!(ax2, ts[1:length(controls)], controls, label = "Iteration $idx")
     end
 
-    axislegend(ax, position = :rt)
+    axislegend(ax1, position = :rt)
+    axislegend(ax2, position = :rt)
     display(fig)
 
     solver
