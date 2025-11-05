@@ -191,6 +191,9 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat)
         control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])
     ]
 
+    # Trace iterations (following NLopt-README pattern)
+    trace = Any[]
+
     # Objective function using existing LQRCost (following your fwrapped pattern)
     function objective_fn_raw(z::Vector)
         Z = DiscreteTrajectory(time(initial_traj), timesteps(initial_traj), z, knotpointsize, nx)
@@ -202,7 +205,10 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat)
         if length(grad) > 0
             ForwardDiff.gradient!(grad, objective_fn_raw, z)
         end
-        return objective_fn_raw(z)
+        value = objective_fn_raw(z)
+        # Store iteration trace (following NLopt-README section on trace iterations)
+        push!(trace, copy(z) => value)
+        return value
     end
 
     # Equality constraints function (following your fwrapped pattern)
@@ -252,8 +258,8 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     NLopt.inequality_constraint!(opt, inequality_constraints_fn, fill(1e-8, n_ineq_constraints))
 
     # Set stopping criteria
-    NLopt.xtol_rel!(opt, 1e-6)
-    NLopt.maxeval!(opt, 10000)
+#    NLopt.xtol_rel!(opt, 1e-6)
+#    NLopt.maxeval!(opt, 10000)
 
     # Initial guess
     z0 = knotpoints(initial_traj)
@@ -282,12 +288,26 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat)
         nx
     )
 
+    # Convert trace to DiscreteTrajectory objects for plotting (like kj() uses solver.guts[:primal])
+    primal_solutions = [
+        DiscreteTrajectory(
+            time(initial_traj),
+            timesteps(initial_traj),
+            z_vec,
+            knotpointsize,
+            nx
+        )
+        for (z_vec, obj_val) in trace
+    ]
+
     return (
         optimizer = opt,
         solution = solution_traj,
         objective_value = min_f,
         return_code = ret,
-        num_evals = num_evals
+        num_evals = num_evals,
+        trace = trace,
+        primal_solutions = primal_solutions
     )
 end
 
@@ -297,29 +317,9 @@ function load_pendulum()::Mechanism
     parse_urdf(urdf)
 end
 
-function trynlopt()
-    mechanism = load_pendulum()
-    solver = pendulum_swingup_nlopt(mechanism, 50, 10.0)
-    solver
-end
-
-function kj()
-    mechanism = load_pendulum()
-    solver = pendulum_swingup(mechanism, 50, 10.0)
-
-    println(
-        "********************************** PRINT GUTS **********************************",
-    )
-    println(
-        "********************************************************************************",
-    )
-    for (k, _v) in solver.guts
-        println(k)
-    end
-    primal_solutions = solver.guts[:primal]
-
+function plot_pendulum_iterations(primal_solutions::Vector; max_iterations::Int = 10)
     # Create a figure for plotting all trajectories
-    fig = Figure(resolution = (800, 800))
+    fig = Figure(size = (800, 800))
     ax1 = Axis(
         fig[1, 1],
         xlabel = "θ (theta) [deg]",
@@ -334,8 +334,18 @@ function kj()
         title = "Control Trajectories",
     )
 
+    # Subsample iterations if there are too many
+    n_total = length(primal_solutions)
+    if n_total <= max_iterations
+        indices_to_plot = 1:n_total
+    else
+        # Plot first, last, and evenly spaced intermediate iterations
+        indices_to_plot = unique([1; round.(Int, LinRange(2, n_total-1, max_iterations-2)); n_total])
+    end
+
     # Plot each solution trajectory
-    for (idx, solution_trajectory) ∈ enumerate(primal_solutions)
+    for idx ∈ indices_to_plot
+        solution_trajectory = primal_solutions[idx]
         ts = time(solution_trajectory)
         qs = position_trajectory(solution_trajectory)
         vs = velocity_trajectory(solution_trajectory)
@@ -358,6 +368,33 @@ function kj()
     axislegend(ax1, position = :rt)
     axislegend(ax2, position = :rt)
     display(fig)
+
+    return fig
+end
+
+function trynlopt()
+    mechanism = load_pendulum()
+    result = pendulum_swingup_nlopt(mechanism, 50, 10.0)
+    plot_pendulum_iterations(result.primal_solutions)
+    result
+end
+
+function kj()
+    mechanism = load_pendulum()
+    solver = pendulum_swingup(mechanism, 50, 10.0)
+
+    println(
+        "********************************** PRINT GUTS **********************************",
+    )
+    println(
+        "********************************************************************************",
+    )
+    for (k, _v) in solver.guts
+        println(k)
+    end
+    primal_solutions = solver.guts[:primal]
+
+    plot_pendulum_iterations(primal_solutions)
 
     solver
 end
