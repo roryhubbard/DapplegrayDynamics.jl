@@ -158,14 +158,38 @@ function hessian_singlef!(
     end
 end
 
+# Collect the H indices a single objective will touch
+@inline function _touched_indices(Z, f)::Vector{Int}
+    acc = Int[]
+    for col₀ in indices(f)
+        col₁ = col₀ + nknots(f) - 1
+        append!(acc, knotpointindices(Z, col₀:col₁))
+    end
+    unique!(acc)                 # allow internal repeats within f
+    return acc
+end
+
 function hessian(
     funcs::AbstractVector{<:AdjacentKnotPointsFunction},
     Z::DiscreteTrajectory{T},
 ) where {T}
     n = length(knotpoints(Z))
     H = zeros(T, n, n)
-    # this assumes that no objective operates on the same part of the trajectory
-    # since this overwrites a sublock of the hessian
+
+    # TODO: check for this outside of the solver routine. Better if it was done
+    # in the construction of the optimization problem
+    # ---- detect overlapping supports exactly as the blocks are formed ----
+    used = Dict{Int,Int}()  # H-index -> first func id that claimed it
+    for (i, f) in enumerate(funcs)
+        for k in _touched_indices(Z, f)
+            if haskey(used, k)
+                error("Hessian assembly conflict: objective $(i) overlaps with objective $(used[k]) at H-index $k. " *
+                      "This violates the assumption that each objective acts on disjoint knotpoints and would overwrite Hessian blocks")
+            end
+            used[k] = i
+        end
+    end
+
     foreach(f -> hessian_singlef!(H, f, Z), funcs)
     Symmetric(H)
 end
