@@ -115,8 +115,10 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     τbound = 3.0
     inequality_constraints =
         [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
+
+    @assert isodd(N) "N needs to be odd for SeparatedHermiteSimpsonConstraint but it is $n"
     equality_constraints = [
-        SeparatedHermiteSimpsonConstraint(mechanism, 1:(N-2), [1]),
+        [SeparatedHermiteSimpsonConstraint(mechanism, i, [1]) for i = 1:2:(N-2)]...,
         state_equality_constraint(x0, knotpointsize, 1),
         state_equality_constraint(xf, knotpointsize, N),
     ]
@@ -184,8 +186,9 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat,
     lqr_cost = LQRCost(Q, R, xf, 1:N)
     objective = [lqr_cost]
 
+    @assert isodd(N) "N needs to be odd for SeparatedHermiteSimpsonConstraint but it is $n"
     equality_constraints = [
-        CompressedHermiteSimpsonConstraint(mechanism, 1:(N-1), [1]),
+        [SeparatedHermiteSimpsonConstraint(mechanism, i, [1]) for i = 1:2:(N-2)]...,
         state_equality_constraint(x0, knotpointsize, 1),
         state_equality_constraint(xf, knotpointsize, N),
     ]
@@ -358,14 +361,14 @@ end
 
 function nl()
     mechanism = load_pendulum()
-    result = pendulum_swingup_nlopt(mechanism, 50, 10.0, 10)
+    result = pendulum_swingup_nlopt(mechanism, 51, 10.0, 10)
     plot_pendulum_iterations(result.primal_solutions)
     result
 end
 
 function kj()
     mechanism = load_pendulum()
-    solver = pendulum_swingup(mechanism, 50, 10.0)
+    solver = pendulum_swingup(mechanism, 51, 10.0)
 
     println(
         "********************************** PRINT GUTS **********************************",
