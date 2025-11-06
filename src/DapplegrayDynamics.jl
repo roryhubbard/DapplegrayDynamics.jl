@@ -11,8 +11,6 @@ using StaticArrays
 
 # potentially remove later
 using GLMakie
-using Ipopt
-using JuMP
 # https://nlopt.readthedocs.io/en/latest/NLopt_Algorithms/
 # https://github.com/jump-dev/NLopt.jl
 using NLopt
