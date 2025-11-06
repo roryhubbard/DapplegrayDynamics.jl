@@ -30,42 +30,80 @@ include("solver.jl")
 
 export acrobot_swingup, df, pendulum_swingup, pendulum_swingup_nlopt, kj, nl
 
-function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
+# Helper function to setup common problem parameters for swingup problems
+function setup_swingup_problem(
+    mechanism::Mechanism,
+    N::Int,
+    tf::AbstractFloat;
+    nu::Int = 1,
+    Q_weight::Float64 = 0.01,
+    R_weight::Float64 = 0.1,
+    Qf_weight::Float64 = 100.0,
+    τbound::Float64 = 3.0,
+)
     nq = num_positions(mechanism)
     nv = num_velocities(mechanism)
     nx = nq + nv
-    nu = 1 # control dimension
     knotpointsize = nx + nu
-
-    Δt = tf / (N - 1)  # time step (sec)
+    Δt = tf / (N - 1)
 
     x0 = zeros(nx)
-    xf = [π, 0, 0, 0]  # swing up
+    Q = Q_weight * I(nx) * Δt
+    Qf = Qf_weight * I(nx)
+    R = R_weight * I(nu) * Δt
 
-    Q = 0.01 * I(nx) * Δt
-    Qf = 100.0 * I(nx)
-    R = 0.1 * I(nu) * Δt
+    return (
+        nq = nq,
+        nv = nv,
+        nx = nx,
+        nu = nu,
+        knotpointsize = knotpointsize,
+        Δt = Δt,
+        x0 = x0,
+        Q = Q,
+        Qf = Qf,
+        R = R,
+        τbound = τbound,
+    )
+end
 
-    objectives = [LQRCost(Q, R, xf, 1:N)]
-
-    τbound = 3.0
-    inequality_constraints =
-        [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
-    equality_constraints = [
-        CompressedHermiteSimpsonConstraint(mechanism, 1:(N-1), [2]),
+# Helper function to create boundary constraints
+function create_boundary_constraints(x0, xf, knotpointsize, N)
+    return [
         state_equality_constraint(x0, knotpointsize, 1),
         state_equality_constraint(xf, knotpointsize, N),
+    ]
+end
+
+# Helper function to create control bound constraints
+function create_control_bounds(knotpointsize, N, τbound)
+    return [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
+end
+
+function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
+    # Setup common problem parameters
+    prob = setup_swingup_problem(mechanism, N, tf)
+
+    xf = [π, 0, 0, 0]  # swing up
+
+    objectives = [LQRCost(prob.Q, prob.R, xf, 1:N)]
+
+    inequality_constraints = create_control_bounds(prob.knotpointsize, N, prob.τbound)
+
+    equality_constraints = [
+        CompressedHermiteSimpsonConstraint(mechanism, 1:(N-1), [2]),
+        create_boundary_constraints(prob.x0, xf, prob.knotpointsize, N)...,
     ]
 
     initial_solution = initialize_trajectory(
         mechanism,
         N,
         tf,
-        nu,
-        zeros(typeof(tf), nq),
+        prob.nu,
+        zeros(typeof(tf), prob.nq),
         [π, 0.0],
-        zeros(typeof(tf), nv),
-        zeros(typeof(tf), nv),
+        zeros(typeof(tf), prob.nv),
+        zeros(typeof(tf), prob.nv),
     )
 
     solver = SQPSolver(
@@ -93,43 +131,30 @@ function df(urdf::Bool = true)
 end
 
 function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
-    nq = num_positions(mechanism)
-    nv = num_velocities(mechanism)
-    nx = nq + nv
-    nu = 1 # control dimension
-    knotpointsize = nx + nu
+    # Setup common problem parameters
+    prob = setup_swingup_problem(mechanism, N, tf)
 
-    Δt = tf / (N - 1)  # time step (sec)
-
-    x0 = zeros(nx)
     xf = [π, 0]  # swing up
 
-    Q = 0.01 * I(nx) * Δt
-    Qf = 100.0 * I(nx)
-    R = 0.1 * I(nu) * Δt
+    objectives = [LQRCost(prob.Q, prob.R, xf, 1:N)]
 
-    objectives = [LQRCost(Q, R, xf, 1:N)]
+    inequality_constraints = create_control_bounds(prob.knotpointsize, N, prob.τbound)
 
-    τbound = 3.0
-    inequality_constraints =
-        [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
-
-    @assert isodd(N) "N needs to be odd for SeparatedHermiteSimpsonConstraint but it is $n"
+    @assert isodd(N) "N needs to be odd for SeparatedHermiteSimpsonConstraint but it is $N"
     equality_constraints = [
         [SeparatedHermiteSimpsonConstraint(mechanism, i, [1]) for i = 1:2:(N-2)]...,
-        state_equality_constraint(x0, knotpointsize, 1),
-        state_equality_constraint(xf, knotpointsize, N),
+        create_boundary_constraints(prob.x0, xf, prob.knotpointsize, N)...,
     ]
 
     initial_solution = initialize_trajectory(
         mechanism,
         N,
         tf,
-        nu,
-        zeros(typeof(tf), nq),
+        prob.nu,
+        zeros(typeof(tf), prob.nq),
         [Float64(π)],
-        zeros(typeof(tf), nv),
-        zeros(typeof(tf), nv),
+        zeros(typeof(tf), prob.nv),
+        zeros(typeof(tf), prob.nv),
     )
 
     solver = SQPSolver(
@@ -151,55 +176,40 @@ function pendulum_swingup_nlopt(
     tf::AbstractFloat,
     maxeval::Int,
 )
-    nq = num_positions(mechanism)
-    nv = num_velocities(mechanism)
-    nx = nq + nv
-    nu = 1 # control dimension
-    knotpointsize = nx + nu
+    # Setup common problem parameters
+    prob = setup_swingup_problem(mechanism, N, tf)
 
-    Δt = tf / (N - 1)  # time step (sec)
-
-    # Initial and final states
-    x0 = zeros(nx)
+    # Final state
     xf = [π, 0.0]  # swing up
 
-    # LQR cost weights
-    Q = 0.01 * I(nx) * Δt
-    R = 0.1 * I(nu) * Δt
-
-    # Control bounds
-    τbound = 3.0
-
     # Total number of decision variables
-    num_vars = N * knotpointsize
+    num_vars = N * prob.knotpointsize
 
     # Create initial trajectory to get time/timestep structure
     initial_traj = initialize_trajectory(
         mechanism,
         N,
         tf,
-        nu,
-        zeros(typeof(tf), nq),
+        prob.nu,
+        zeros(typeof(tf), prob.nq),
         [Float64(π)],
-        zeros(typeof(tf), nv),
-        zeros(typeof(tf), nv),
+        zeros(typeof(tf), prob.nv),
+        zeros(typeof(tf), prob.nv),
     )
 
     # Create cost and constraint objects
-    lqr_cost = LQRCost(Q, R, xf, 1:N)
+    lqr_cost = LQRCost(prob.Q, prob.R, xf, 1:N)
     objective = [lqr_cost]
 
-    @assert isodd(N) "N needs to be odd for SeparatedHermiteSimpsonConstraint but it is $n"
+    @assert isodd(N) "N needs to be odd for SeparatedHermiteSimpsonConstraint but it is $N"
     equality_constraints = [
         [SeparatedHermiteSimpsonConstraint(mechanism, i, [1]) for i = 1:2:(N-2)]...,
-        state_equality_constraint(x0, knotpointsize, 1),
-        state_equality_constraint(xf, knotpointsize, N),
+        create_boundary_constraints(prob.x0, xf, prob.knotpointsize, N)...,
     ]
     # ignored but required by super_hessian_constraints
     v = zeros(Float64, num_lagrange_multipliers(equality_constraints))
 
-    inequality_constraints =
-        [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
+    inequality_constraints = create_control_bounds(prob.knotpointsize, N, prob.τbound)
     # ignored but required by super_hessian_constraints
     λ = zeros(Float64, num_lagrange_multipliers(inequality_constraints))
 
@@ -212,8 +222,8 @@ function pendulum_swingup_nlopt(
             time(initial_traj),
             timesteps(initial_traj),
             z,
-            knotpointsize,
-            nx,
+            prob.knotpointsize,
+            prob.nx,
         )
         f, ▽f, ▽²f = super_hessian_objective(objective, Z)
         if length(grad) > 0
@@ -229,8 +239,8 @@ function pendulum_swingup_nlopt(
             time(initial_traj),
             timesteps(initial_traj),
             z,
-            knotpointsize,
-            nx,
+            prob.knotpointsize,
+            prob.nx,
         )
         h, ▽h, ▽²h = super_hessian_constraints(equality_constraints, Z, v)
         result[:] = h
@@ -244,8 +254,8 @@ function pendulum_swingup_nlopt(
             time(initial_traj),
             timesteps(initial_traj),
             z,
-            knotpointsize,
-            nx,
+            prob.knotpointsize,
+            prob.nx,
         )
         g, ▽g, ▽²g = super_hessian_constraints(inequality_constraints, Z, λ)
         result[:] = g
@@ -292,8 +302,8 @@ function pendulum_swingup_nlopt(
         time(initial_traj),
         timesteps(initial_traj),
         min_z,
-        knotpointsize,
-        nx,
+        prob.knotpointsize,
+        prob.nx,
     )
 
     primal_solutions = [
@@ -301,8 +311,8 @@ function pendulum_swingup_nlopt(
             time(initial_traj),
             timesteps(initial_traj),
             z_vec,
-            knotpointsize,
-            nx,
+            prob.knotpointsize,
+            prob.nx,
         ) for (z_vec, obj_val) in trace
     ]
 
