@@ -145,7 +145,12 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     solver
 end
 
-function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat, maxeval::Int)
+function pendulum_swingup_nlopt(
+    mechanism::Mechanism,
+    N::Int,
+    tf::AbstractFloat,
+    maxeval::Int,
+)
     nq = num_positions(mechanism)
     nv = num_velocities(mechanism)
     nx = nq + nv
@@ -193,18 +198,23 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat,
     # ignored but required by super_hessian_constraints
     v = zeros(Float64, num_lagrange_multipliers(equality_constraints))
 
-    inequality_constraints = [
-        control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])
-    ]
+    inequality_constraints =
+        [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
     # ignored but required by super_hessian_constraints
     λ = zeros(Float64, num_lagrange_multipliers(inequality_constraints))
 
     # Trace iterations (following NLopt-README pattern)
     trace = Any[]
 
-    pbar = Progress(maxeval; desc="Running solver")
+    pbar = Progress(maxeval; desc = "Running solver")
     function objective_fn(z::Vector, grad::Vector)
-        Z = DiscreteTrajectory(time(initial_traj), timesteps(initial_traj), z, knotpointsize, nx)
+        Z = DiscreteTrajectory(
+            time(initial_traj),
+            timesteps(initial_traj),
+            z,
+            knotpointsize,
+            nx,
+        )
         f, ▽f, ▽²f = super_hessian_objective(objective, Z)
         if length(grad) > 0
             grad[:] = ▽f
@@ -215,7 +225,13 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat,
     end
 
     function equality_constraints_fn(result::Vector, z::Vector, grad::Matrix)
-        Z = DiscreteTrajectory(time(initial_traj), timesteps(initial_traj), z, knotpointsize, nx)
+        Z = DiscreteTrajectory(
+            time(initial_traj),
+            timesteps(initial_traj),
+            z,
+            knotpointsize,
+            nx,
+        )
         h, ▽h, ▽²h = super_hessian_constraints(equality_constraints, Z, v)
         result[:] = h
         if length(grad) > 0
@@ -224,7 +240,13 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat,
     end
 
     function inequality_constraints_fn(result::Vector, z::Vector, grad::Matrix)
-        Z = DiscreteTrajectory(time(initial_traj), timesteps(initial_traj), z, knotpointsize, nx)
+        Z = DiscreteTrajectory(
+            time(initial_traj),
+            timesteps(initial_traj),
+            z,
+            knotpointsize,
+            nx,
+        )
         g, ▽g, ▽²g = super_hessian_constraints(inequality_constraints, Z, λ)
         result[:] = g
         if length(grad) > 0
@@ -245,7 +267,7 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat,
     NLopt.inequality_constraint!(opt, inequality_constraints_fn, fill(1e-8, length(λ)))
 
     # Set stopping criteria
-#    NLopt.xtol_rel!(opt, 1e-6)
+    #    NLopt.xtol_rel!(opt, 1e-6)
     NLopt.maxeval!(opt, maxeval)
 
     # Initial guess
@@ -271,7 +293,7 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat,
         timesteps(initial_traj),
         min_z,
         knotpointsize,
-        nx
+        nx,
     )
 
     primal_solutions = [
@@ -280,9 +302,8 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat,
             timesteps(initial_traj),
             z_vec,
             knotpointsize,
-            nx
-        )
-        for (z_vec, obj_val) in trace
+            nx,
+        ) for (z_vec, obj_val) in trace
     ]
 
     return (
@@ -292,7 +313,7 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat,
         return_code = ret,
         num_evals = num_evals,
         trace = trace,
-        primal_solutions = primal_solutions
+        primal_solutions = primal_solutions,
     )
 end
 
@@ -325,7 +346,8 @@ function plot_pendulum_iterations(primal_solutions::Vector; max_iterations::Int 
         indices_to_plot = 1:n_total
     else
         # Plot first, last, and evenly spaced intermediate iterations
-        indices_to_plot = unique([1; round.(Int, LinRange(2, n_total-1, max_iterations-2)); n_total])
+        indices_to_plot =
+            unique([1; round.(Int, LinRange(2, n_total-1, max_iterations-2)); n_total])
     end
 
     # Plot each solution trajectory

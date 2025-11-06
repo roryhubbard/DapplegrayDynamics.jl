@@ -183,8 +183,10 @@ function hessian(
     for (i, f) in enumerate(funcs)
         for k in _touched_indices(Z, f)
             if haskey(used, k)
-                error("Hessian assembly conflict: objective $(i) overlaps with objective $(used[k]) at H-index $k. " *
-                      "This violates the assumption that each objective acts on disjoint knotpoints and would overwrite Hessian blocks")
+                error(
+                    "Hessian assembly conflict: objective $(i) overlaps with objective $(used[k]) at H-index $k. " *
+                    "This violates the assumption that each objective acts on disjoint knotpoints and would overwrite Hessian blocks",
+                )
             end
             used[k] = i
         end
