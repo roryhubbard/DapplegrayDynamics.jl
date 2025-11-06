@@ -4,6 +4,7 @@ using Clarabel
 using DiffResults
 using ForwardDiff
 using LinearAlgebra
+using ProgressMeter
 using RigidBodyDynamics
 using SparseArrays
 using StaticArrays
@@ -13,6 +14,7 @@ using GLMakie
 using Ipopt
 using JuMP
 # https://nlopt.readthedocs.io/en/latest/NLopt_Algorithms/
+# https://github.com/jump-dev/NLopt.jl
 using NLopt
 # https://github.com/cvanaret/Uno
 # https://arxiv.org/pdf/2406.13454
@@ -28,7 +30,7 @@ include("objective.jl")
 include("rigidbodydynamics.jl")
 include("solver.jl")
 
-export acrobot_swingup, df, pendulum_swingup, pendulum_swingup_nlopt, kj, trynlopt
+export acrobot_swingup, df, pendulum_swingup, pendulum_swingup_nlopt, kj, nl
 
 function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     nq = num_positions(mechanism)
@@ -143,7 +145,7 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     solver
 end
 
-function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat)
+function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat, maxeval::Int)
     nq = num_positions(mechanism)
     nv = num_velocities(mechanism)
     nx = nq + nv
@@ -178,71 +180,55 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat)
         zeros(typeof(tf), nv),
     )
 
-    # Create cost and constraint objects using existing functions
+    # Create cost and constraint objects
     lqr_cost = LQRCost(Q, R, xf, 1:N)
+    objective = [lqr_cost]
 
     equality_constraints = [
         CompressedHermiteSimpsonConstraint(mechanism, 1:(N-1), [1]),
         state_equality_constraint(x0, knotpointsize, 1),
         state_equality_constraint(xf, knotpointsize, N),
     ]
+    # ignored but required by super_hessian_constraints
+    v = zeros(Float64, num_lagrange_multipliers(equality_constraints))
 
     inequality_constraints = [
         control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])
     ]
+    # ignored but required by super_hessian_constraints
+    λ = zeros(Float64, num_lagrange_multipliers(inequality_constraints))
 
     # Trace iterations (following NLopt-README pattern)
     trace = Any[]
 
-    # Objective function using existing LQRCost (following your fwrapped pattern)
-    function objective_fn_raw(z::Vector)
-        Z = DiscreteTrajectory(time(initial_traj), timesteps(initial_traj), z, knotpointsize, nx)
-        return evaluate_objective([lqr_cost], Z)
-    end
-
-    # Wrap with ForwardDiff for automatic gradient computation (from NLopt-README)
+    pbar = Progress(maxeval; desc="Running solver")
     function objective_fn(z::Vector, grad::Vector)
-        if length(grad) > 0
-            ForwardDiff.gradient!(grad, objective_fn_raw, z)
-        end
-        value = objective_fn_raw(z)
-        # Store iteration trace (following NLopt-README section on trace iterations)
-        push!(trace, copy(z) => value)
-        return value
-    end
-
-    # Equality constraints function (following your fwrapped pattern)
-    function equality_constraints_raw(z::Vector)
         Z = DiscreteTrajectory(time(initial_traj), timesteps(initial_traj), z, knotpointsize, nx)
-        return evaluate_constraints(equality_constraints, Z)
+        f, ▽f, ▽²f = super_hessian_objective(objective, Z)
+        if length(grad) > 0
+            grad[:] = ▽f
+        end
+        push!(trace, copy(z) => f)
+        next!(pbar)
+        return f
     end
-
-    n_eq_constraints = sum(outputdim(con) * length(indices(con)) for con in equality_constraints)
 
     function equality_constraints_fn(result::Vector, z::Vector, grad::Matrix)
-        result[:] = equality_constraints_raw(z)
-        if length(grad) > 0
-            jac = ForwardDiff.jacobian(equality_constraints_raw, z)
-            grad[:, :] = jac'
-        end
-        return
-    end
-
-    # Inequality constraints function
-    function inequality_constraints_raw(z::Vector)
         Z = DiscreteTrajectory(time(initial_traj), timesteps(initial_traj), z, knotpointsize, nx)
-        return evaluate_constraints(inequality_constraints, Z)
+        h, ▽h, ▽²h = super_hessian_constraints(equality_constraints, Z, v)
+        result[:] = h
+        if length(grad) > 0
+            grad[:, :] = ▽h'
+        end
     end
-
-    n_ineq_constraints = sum(outputdim(con) * length(indices(con)) for con in inequality_constraints)
 
     function inequality_constraints_fn(result::Vector, z::Vector, grad::Matrix)
-        result[:] = inequality_constraints_raw(z)
+        Z = DiscreteTrajectory(time(initial_traj), timesteps(initial_traj), z, knotpointsize, nx)
+        g, ▽g, ▽²g = super_hessian_constraints(inequality_constraints, Z, λ)
+        result[:] = g
         if length(grad) > 0
-            jac = ForwardDiff.jacobian(inequality_constraints_raw, z)
-            grad[:, :] = jac'
+            grad[:, :] = ▽g'
         end
-        return
     end
 
     # Create NLopt optimizer with NLOPT_LD_SLSQP algorithm
@@ -252,14 +238,14 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     NLopt.min_objective!(opt, objective_fn)
 
     # Add equality constraints
-    NLopt.equality_constraint!(opt, equality_constraints_fn, fill(1e-8, n_eq_constraints))
+    NLopt.equality_constraint!(opt, equality_constraints_fn, fill(1e-8, length(v)))
 
     # Add inequality constraints (control bounds)
-    NLopt.inequality_constraint!(opt, inequality_constraints_fn, fill(1e-8, n_ineq_constraints))
+    NLopt.inequality_constraint!(opt, inequality_constraints_fn, fill(1e-8, length(λ)))
 
     # Set stopping criteria
 #    NLopt.xtol_rel!(opt, 1e-6)
-#    NLopt.maxeval!(opt, 10000)
+    NLopt.maxeval!(opt, maxeval)
 
     # Initial guess
     z0 = knotpoints(initial_traj)
@@ -279,7 +265,6 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     ================================
     """)
 
-    # Return as DiscreteTrajectory for compatibility with existing plotting code
     solution_traj = DiscreteTrajectory(
         time(initial_traj),
         timesteps(initial_traj),
@@ -288,7 +273,6 @@ function pendulum_swingup_nlopt(mechanism::Mechanism, N::Int, tf::AbstractFloat)
         nx
     )
 
-    # Convert trace to DiscreteTrajectory objects for plotting (like kj() uses solver.guts[:primal])
     primal_solutions = [
         DiscreteTrajectory(
             time(initial_traj),
@@ -372,9 +356,9 @@ function plot_pendulum_iterations(primal_solutions::Vector; max_iterations::Int 
     return fig
 end
 
-function trynlopt()
+function nl()
     mechanism = load_pendulum()
-    result = pendulum_swingup_nlopt(mechanism, 50, 10.0)
+    result = pendulum_swingup_nlopt(mechanism, 50, 10.0, 10)
     plot_pendulum_iterations(result.primal_solutions)
     result
 end
