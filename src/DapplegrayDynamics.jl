@@ -333,7 +333,7 @@ function load_pendulum()::Mechanism
     parse_urdf(urdf)
 end
 
-function plot_pendulum_iterations(primal_solutions::Vector; max_iterations::Int = 10)
+function plot_pendulum_iterations(primal_solutions::Vector; max_iterations::Int = 10, displayplot::Bool = false)
     # Create a figure for plotting all trajectories
     fig = Figure(size = (800, 800))
     ax1 = Axis(
@@ -384,7 +384,9 @@ function plot_pendulum_iterations(primal_solutions::Vector; max_iterations::Int 
 
     axislegend(ax1, position = :rt)
     axislegend(ax2, position = :rt)
-    display(fig)
+    if displayplot
+        display(fig)
+    end
 
     return fig
 end
