@@ -69,7 +69,7 @@ function create_boundary_constraints(x0, xf, knotpointsize, N)
 end
 
 function create_control_bounds(knotpointsize, N, τbound)
-    return [control_bound_constraint(knotpointsize, 1:N, [τbound], [-τbound])]
+    return [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
 end
 
 function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
