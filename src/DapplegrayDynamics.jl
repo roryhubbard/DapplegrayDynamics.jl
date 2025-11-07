@@ -35,9 +35,8 @@ function setup_swingup_problem(
     N::Int,
     tf::AbstractFloat;
     nu::Int = 1,
-    Q_weight::Float64 = 0.01,
-    R_weight::Float64 = 0.1,
-    Qf_weight::Float64 = 100.0,
+    Q_weight::Float64 = 0.1,
+    R_weight::Float64 = 1.0,
     τbound::Float64 = 3.0,
 )
     nq = num_positions(mechanism)
@@ -48,7 +47,6 @@ function setup_swingup_problem(
 
     x0 = zeros(nx)
     Q = Q_weight * I(nx) * Δt
-    Qf = Qf_weight * I(nx)
     R = R_weight * I(nu) * Δt
 
     return (
@@ -60,7 +58,6 @@ function setup_swingup_problem(
         Δt = Δt,
         x0 = x0,
         Q = Q,
-        Qf = Qf,
         R = R,
         τbound = τbound,
     )
@@ -74,7 +71,7 @@ function create_boundary_constraints(x0, xf, knotpointsize, N)
 end
 
 function create_control_bounds(knotpointsize, N, τbound)
-    return [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
+    return [control_bound_constraint(knotpointsize, 1:N, [τbound], [-τbound])]
 end
 
 function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
