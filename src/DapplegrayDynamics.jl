@@ -9,8 +9,6 @@ using RigidBodyDynamics
 using SparseArrays
 using StaticArrays
 
-# potentially remove later
-using GLMakie
 # https://nlopt.readthedocs.io/en/latest/NLopt_Algorithms/
 # https://github.com/jump-dev/NLopt.jl
 using NLopt
@@ -28,7 +26,7 @@ include("objective.jl")
 include("rigidbodydynamics.jl")
 include("solver.jl")
 
-export acrobot_swingup, df, pendulum_swingup, pendulum_swingup_nlopt, kj, nl
+export acrobot_swingup, pendulum_swingup, pendulum_swingup_nlopt
 
 function setup_swingup_problem(
     mechanism::Mechanism,
@@ -71,7 +69,7 @@ function create_boundary_constraints(x0, xf, knotpointsize, N)
 end
 
 function create_control_bounds(knotpointsize, N, τbound)
-    return [control_bound_constraint(knotpointsize, 1:N, [τbound], [-τbound])]
+    return [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
 end
 
 function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
@@ -110,17 +108,6 @@ function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     solve!(solver)
 
     solver
-end
-
-function load_acrobot()::Mechanism
-    srcdir = dirname(pathof(DapplegrayDynamics))
-    urdf = joinpath(srcdir, "..", "test", "urdf", "Acrobot.urdf")
-    parse_urdf(urdf)
-end
-
-function df(urdf::Bool = true)
-    mechanism = urdf ? load_acrobot() : doublependulum()
-    acrobot_swingup(mechanism, 50, 10.0)
 end
 
 function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
@@ -321,87 +308,15 @@ function load_pendulum()::Mechanism
     parse_urdf(urdf)
 end
 
-function plot_pendulum_iterations(primal_solutions::Vector; max_iterations::Int = 10)
-    # Create a figure for plotting all trajectories
-    fig = Figure(size = (800, 800))
-    ax1 = Axis(
-        fig[1, 1],
-        xlabel = "θ (theta) [deg]",
-        ylabel = "θ̇ (thetadot) [deg/s]",
-        title = "Pendulum Phase Portrait",
-    )
-
-    ax2 = Axis(
-        fig[2, 1],
-        xlabel = "Time [s]",
-        ylabel = "Control (τ) [Nm]",
-        title = "Control Trajectories",
-    )
-
-    # Subsample iterations if there are too many
-    n_total = length(primal_solutions)
-    if n_total <= max_iterations
-        indices_to_plot = 1:n_total
-    else
-        # Plot first, last, and evenly spaced intermediate iterations
-        indices_to_plot =
-            unique([1; round.(Int, LinRange(2, n_total-1, max_iterations-2)); n_total])
-    end
-
-    # Plot each solution trajectory
-    for idx ∈ indices_to_plot
-        solution_trajectory = primal_solutions[idx]
-        ts = time(solution_trajectory)
-        qs = position_trajectory(solution_trajectory)
-        vs = velocity_trajectory(solution_trajectory)
-        us = control_trajectory(solution_trajectory)
-
-        # Extract theta and thetadot for plotting (convert to degrees)
-        theta = [rad2deg(first(q)) for q ∈ qs]
-        thetadot = [rad2deg(first(v)) for v ∈ vs]
-
-        # Extract controls
-        controls = [first(u) for u ∈ us]
-
-        # Plot the phase portrait
-        scatterlines!(ax1, theta, thetadot, label = "Iteration $idx")
-
-        # Plot the control trajectory (note: controls have length N-1)
-        lines!(ax2, ts[1:length(controls)], controls, label = "Iteration $idx")
-    end
-
-    axislegend(ax1, position = :rt)
-    axislegend(ax2, position = :rt)
-    display(fig)
-
-    return fig
+function load_acrobot()::Mechanism
+    srcdir = dirname(pathof(DapplegrayDynamics))
+    urdf = joinpath(srcdir, "..", "test", "urdf", "Acrobot.urdf")
+    parse_urdf(urdf)
 end
 
-function nl()
-    mechanism = load_pendulum()
-    result = pendulum_swingup_nlopt(mechanism, 51, 10.0, 10)
-    plot_pendulum_iterations(result.primal_solutions)
-    result
-end
-
-function kj()
-    mechanism = load_pendulum()
-    solver = pendulum_swingup(mechanism, 51, 10.0)
-
-    println(
-        "********************************** PRINT GUTS **********************************",
-    )
-    println(
-        "********************************************************************************",
-    )
-    for (k, _v) in solver.guts
-        println(k)
-    end
-    primal_solutions = solver.guts[:primal]
-
-    plot_pendulum_iterations(primal_solutions)
-
-    solver
+function df(urdf::Bool = true)
+    mechanism = urdf ? load_acrobot() : doublependulum()
+    acrobot_swingup(mechanism, 50, 10.0)
 end
 
 end
