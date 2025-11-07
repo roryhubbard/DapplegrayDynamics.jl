@@ -30,7 +30,6 @@ include("solver.jl")
 
 export acrobot_swingup, df, pendulum_swingup, pendulum_swingup_nlopt, kj, nl
 
-# Helper function to setup common problem parameters for swingup problems
 function setup_swingup_problem(
     mechanism::Mechanism,
     N::Int,
@@ -67,7 +66,6 @@ function setup_swingup_problem(
     )
 end
 
-# Helper function to create boundary constraints
 function create_boundary_constraints(x0, xf, knotpointsize, N)
     return [
         state_equality_constraint(x0, knotpointsize, 1),
@@ -75,13 +73,11 @@ function create_boundary_constraints(x0, xf, knotpointsize, N)
     ]
 end
 
-# Helper function to create control bound constraints
 function create_control_bounds(knotpointsize, N, τbound)
     return [control_bound_constraint(knotpointsize, 1:(N-1), [τbound], [-τbound])]
 end
 
 function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
-    # Setup common problem parameters
     prob = setup_swingup_problem(mechanism, N, tf)
 
     xf = [π, 0, 0, 0]  # swing up
@@ -131,7 +127,6 @@ function df(urdf::Bool = true)
 end
 
 function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
-    # Setup common problem parameters
     prob = setup_swingup_problem(mechanism, N, tf)
 
     xf = [π, 0]  # swing up
@@ -176,7 +171,6 @@ function pendulum_swingup_nlopt(
     tf::AbstractFloat,
     maxeval::Int,
 )
-    # Setup common problem parameters
     prob = setup_swingup_problem(mechanism, N, tf)
 
     # Final state
@@ -213,7 +207,7 @@ function pendulum_swingup_nlopt(
     # ignored but required by super_hessian_constraints
     λ = zeros(Float64, num_lagrange_multipliers(inequality_constraints))
 
-    # Trace iterations (following NLopt-README pattern)
+    # Trace iterations (following NLopt README pattern)
     trace = Any[]
 
     pbar = Progress(maxeval; desc = "Running solver")
@@ -267,13 +261,10 @@ function pendulum_swingup_nlopt(
     # Create NLopt optimizer with NLOPT_LD_SLSQP algorithm
     opt = NLopt.Opt(:LD_SLSQP, num_vars)
 
-    # Set objective
     NLopt.min_objective!(opt, objective_fn)
 
-    # Add equality constraints
     NLopt.equality_constraint!(opt, equality_constraints_fn, fill(1e-8, length(v)))
 
-    # Add inequality constraints (control bounds)
     NLopt.inequality_constraint!(opt, inequality_constraints_fn, fill(1e-8, length(λ)))
 
     # Set stopping criteria
