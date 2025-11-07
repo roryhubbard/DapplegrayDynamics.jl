@@ -54,7 +54,7 @@ function control_bound_constraint(
     if isnothing(upperbound)
         A, b = conic_lowerbound_Ab(lowerbound, knotpointsize)
     elseif isnothing(lowerbound)
-        A, b = conic_upperbound_Ab(lowerbound, knotpointsize)
+        A, b = conic_upperbound_Ab(upperbound, knotpointsize)
     else
         if length(upperbound) != length(lowerbound)
             throw(
@@ -64,7 +64,7 @@ function control_bound_constraint(
             )
         end
         Aₗ, bₗ = conic_lowerbound_Ab(lowerbound, knotpointsize)
-        Aᵤ, bᵤ = conic_upperbound_Ab(lowerbound, knotpointsize)
+        Aᵤ, bᵤ = conic_upperbound_Ab(upperbound, knotpointsize)
         A = [Aₗ; Aᵤ]
         b = [bₗ; bᵤ]
     end
