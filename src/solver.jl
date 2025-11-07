@@ -3,10 +3,11 @@ struct SQPSolver{T}
     f::AbstractVector{<:AdjacentKnotPointsFunction}
     g::AbstractVector{<:AdjacentKnotPointsFunction}
     h::AbstractVector{<:AdjacentKnotPointsFunction}
-    x::DiscreteTrajectory{T}
+    x::DiscreteTrajectory{T,T}
     λ::AbstractVector{T}
     v::AbstractVector{T}
     settings::Clarabel.Settings{T}
+    guts::Dict{Symbol,Any}
 
     function SQPSolver(
         mechanism::Mechanism{T},
@@ -28,7 +29,7 @@ struct SQPSolver{T}
             settings = Clarabel.Settings(
                 max_iter = 10,
                 time_limit = 60,
-                verbose = true,
+                verbose = false,
                 max_step_fraction = 0.99,
                 tol_gap_abs = 1e-8,
                 tol_gap_rel = 1e-8,
@@ -40,7 +41,7 @@ struct SQPSolver{T}
         nh = num_lagrange_multipliers(h)
         @assert length(v) == nh "equality constraint lagrange multipliers vector must have length $(nh) but has $(length(v))"
 
-        new{T}(mechanism, f, g, h, x, λ, v, settings)
+        new{T}(mechanism, f, g, h, x, λ, v, settings, Dict{Symbol,Any}())
     end
 end
 
@@ -95,14 +96,14 @@ function initialize_trajectory(
 end
 
 function num_lagrange_multipliers(constraints::AbstractVector{<:AdjacentKnotPointsFunction})
-    sum(outputdim(c) * length(indices(c)) for c in constraints)
+    sum(outputdim(c) * length(indices(c)) for c ∈ constraints)
 end
 
 function evaluate_objective(
     objectives::AbstractVector{<:AdjacentKnotPointsFunction},
     Z::DiscreteTrajectory,
 )
-    sum(objective(Val(Sum), Z) for objective in objectives)
+    sum(objective(Val(Sum), Z) for objective ∈ objectives)
 end
 
 function super_gradient(
@@ -192,10 +193,10 @@ function super_hessian_constraints(
     end
     # numeric symmetrization before wrapping to handle autodiff noise, maybe not
     # necessary?
-#    ∑H .= (∑H .+ ∑H') .* T(0.5)
+    #    ∑H .= (∑H .+ ∑H') .* T(0.5)
 
     cval = evaluate_constraints(constraints, Z)
-    Jmn  = reshape(DiffResults.value(H), m, n)
+    Jmn = reshape(DiffResults.value(H), m, n)
 
     cval, Jmn, Symmetric(∑H)
 end
@@ -232,11 +233,13 @@ function solve_qp(
     ]
     K = [Clarabel.ZeroConeT(length(h)), Clarabel.NonnegativeConeT(length(g))]
 
-    println("P $(size(P)): ", P)
-    println("q $(size(q)): ", q)
-    println("A $(size(A)): ", A)
-    println("b $(size(b)): ", b)
-    println("K $(size(K)): ", K)
+    if settings.verbose
+        println("P $(size(P)): ", P)
+        println("q $(size(q)): ", q)
+        println("A $(size(A)): ", A)
+        println("b $(size(b)): ", b)
+        println("K $(size(K)): ", K)
+    end
 
     solver = Clarabel.Solver(P, q, A, b, K, settings)
     solution = Clarabel.solve!(solver)
@@ -246,7 +249,11 @@ function solve_qp(
     (solution.x, solution.z)
 end
 
-function solve!(solver::SQPSolver{T}, custom_gradients::Bool = false, debug::Bool = true) where {T}
+function solve!(
+    solver::SQPSolver{T},
+    custom_gradients::Bool = false,
+    expose_guts::Bool = true,
+) where {T}
     settings = get_settings(solver)
     for k = 1:settings.max_iter
         x = primal(solver)
@@ -267,8 +274,10 @@ function solve!(solver::SQPSolver{T}, custom_gradients::Bool = false, debug::Boo
             ▽²h = vector_hessian(equality_constraints(solver), primal(solver), v)
         else
             f, ▽f, ▽²f = super_hessian_objective(objectives(solver), primal(solver))
-            g, Jg, ▽²g = super_hessian_constraints(inequality_constraints(solver), primal(solver), λ)
-            h, Jh, ▽²h = super_hessian_constraints(equality_constraints(solver), primal(solver), v)
+            g, Jg, ▽²g =
+                super_hessian_constraints(inequality_constraints(solver), primal(solver), λ)
+            h, Jh, ▽²h =
+                super_hessian_constraints(equality_constraints(solver), primal(solver), v)
         end
 
         L = f + λ' * g + v' * h
@@ -280,13 +289,32 @@ function solve!(solver::SQPSolver{T}, custom_gradients::Bool = false, debug::Boo
 
         pₖ, lₖ = solve_qp(g, Jg, h, Jh, ▽L, ▽²L, settings)
 
+        if expose_guts
+            push!(
+                get!(solver.guts, :primal, Vector{DiscreteTrajectory{T,T}}()),
+                deepcopy(x),
+            )
+            push!(get!(solver.guts, :inequality_duals, Vector{Vector{T}}()), deepcopy(λ))
+            push!(get!(solver.guts, :equality_duals, Vector{Vector{T}}()), deepcopy(v))
+            push!(get!(solver.guts, :objective, Vector{T}()), deepcopy(f))
+            push!(get!(solver.guts, :lagrangian, Vector{T}()), deepcopy(L))
+        end
+
         # solution step
         α = settings.max_step_fraction
         knotpoints(primal(solver)) .+= α .* pₖ
         inequality_duals(solver) .+= α .* @view lₖ[1:length(g)]
         equality_duals(solver) .+= α .* @view lₖ[(length(g)+1):end]
 
-        if debug
+        if expose_guts && k == settings.max_iter
+            push!(get!(solver.guts, :primal, Vector{DiscreteTrajectory{T,T}}()), x)
+            push!(get!(solver.guts, :inequality_duals, Vector{Vector{T}}()), λ)
+            push!(get!(solver.guts, :equality_duals, Vector{Vector{T}}()), v)
+            push!(get!(solver.guts, :objective, Vector{T}()), f)
+            push!(get!(solver.guts, :lagrangian, Vector{T}()), L)
+        end
+
+        if settings.verbose
             println("primal x $(length(knotpoints(x))): ", x)
             println("dual λ $(length(λ)): ", λ)
             println("dual v $(length(v)): ", v)

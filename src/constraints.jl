@@ -134,7 +134,7 @@ function separated_hermite_simpson(
     dynamics!(ẋₘ, dynamicsresult, mechanismstate, xₘ, τₘ)
 
     c₁ = xₖ₊₁ - xₖ - Δt / 6 * (ẋₖ + 4 * ẋₘ + ẋₖ₊₁)
-    c₂ = ẋₘ - 1 / 2 * (xₖ + xₖ₊₁) - Δt / 8 * (ẋₖ - ẋₖ₊₁)
+    c₂ = xₘ - 1 / 2 * (xₖ + xₖ₊₁) - Δt / 8 * (ẋₖ - ẋₖ₊₁)
     # TODO: remove memory allocation
     vcat(c₁, c₂)
 end
@@ -220,11 +220,14 @@ struct SeparatedHermiteSimpsonConstraint{T} <: HermiteSimpsonConstraint
     active_joint_indices::Vector{Int}
     function SeparatedHermiteSimpsonConstraint(
         mechanism::Mechanism{T},
-        idx::UnitRange{Int},
+        idx::Int,
         active_joint_indices::Vector{Int},
     ) where {T}
         outputdim = num_positions(mechanism) + num_velocities(mechanism)
-        new{T}(mechanism, idx, 3, 2*outputdim, active_joint_indices)
+        # TODO: add arbitrary stride lengths so that we can apply separated
+        # hermite simpson constraints with a knotpoint index range like 1:2:N-1
+        # instead of having to apply 1 at a time
+        new{T}(mechanism, idx:idx, 3, 2*outputdim, active_joint_indices)
     end
 end
 function (con::SeparatedHermiteSimpsonConstraint)(z::DiscreteTrajectory)
