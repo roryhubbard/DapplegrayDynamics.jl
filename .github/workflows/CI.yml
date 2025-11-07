@@ -31,7 +31,7 @@ jobs:
           - x64
     env:
       JULIA_MAKIE_BACKEND: CairoMakie
-      CI: true
+      HEADLESS: "true"
     steps:
       - uses: actions/checkout@v5
       - uses: julia-actions/setup-julia@v2

@@ -5,10 +5,10 @@ authors = ["Rory Hubbard <calvin3h@gmail.com> and contributors"]
 
 [deps]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 Clarabel = "61c947e1-3e6d-4ee4-985a-eec8c727bd6e"
 DiffResults = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
-GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 NLopt = "76087f3c-5699-56af-9a33-bf431cd00edd"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
@@ -19,6 +19,7 @@ UnoSolver = "1baa60ac-02f7-4b39-a7a8-2f4f58486b05"
 
 [compat]
 BenchmarkTools = "1.6.0"
+CairoMakie = "0.15.6"
 Clarabel = "0.11.0"
 DiffResults = "1.1.0"
 ForwardDiff = "0.10, 1"
@@ -34,6 +35,7 @@ julia = "1.11"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 
 [targets]
 test = ["Test"]

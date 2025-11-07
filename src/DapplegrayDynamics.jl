@@ -10,7 +10,17 @@ using SparseArrays
 using StaticArrays
 
 # potentially remove later
-using GLMakie
+if get(ENV, "HEADLESS", "false") == "true"
+    @info "Using CairoMakie (headless mode)"
+    using CairoMakie
+else
+    try
+        using GLMakie
+    catch e
+        @warn "Falling back to CairoMakie: $e"
+        using CairoMakie
+    end
+end
 # https://nlopt.readthedocs.io/en/latest/NLopt_Algorithms/
 # https://github.com/jump-dev/NLopt.jl
 using NLopt
