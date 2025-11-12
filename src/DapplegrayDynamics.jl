@@ -145,7 +145,7 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat, maxev
         nothing,
         nothing,
         nothing,
-        OuterSettings(max_iter=maxeval),
+        OuterSettings(max_iter = maxeval),
     )
 
     solve!(solver)
