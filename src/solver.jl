@@ -231,7 +231,7 @@ function solve_qp(
         g;
         h
     ]
-    K = [Clarabel.ZeroConeT(length(h)), Clarabel.NonnegativeConeT(length(g))]
+    K = [Clarabel.NonnegativeConeT(length(g)), Clarabel.ZeroConeT(length(h))]
 
     if settings.verbose
         println("P $(size(P)): ", P)
