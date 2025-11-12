@@ -1,8 +1,8 @@
-@kwdef struct OuterSettings{T <: AbstractFloat}
-    max_iter::UInt32    	= 10
-    time_limit::Float64     = Inf
-    verbose::Bool           = true
-    max_step_fraction::T    = 0.99
+@kwdef struct OuterSettings{T<:AbstractFloat}
+    max_iter::UInt32 = 10
+    time_limit::Float64 = Inf
+    verbose::Bool = true
+    max_step_fraction::T = 0.99
 end
 
 OuterSettings(args...) = OuterSettings{Float64}(args...)
@@ -48,7 +48,18 @@ struct SQPSolver{T}
         nh = num_lagrange_multipliers(h)
         @assert length(v) == nh "equality constraint lagrange multipliers vector must have length $(nh) but has $(length(v))"
 
-        new{T}(mechanism, f, g, h, x, λ, v, inner_settings, outer_settings, Dict{Symbol,Any}())
+        new{T}(
+            mechanism,
+            f,
+            g,
+            h,
+            x,
+            λ,
+            v,
+            inner_settings,
+            outer_settings,
+            Dict{Symbol,Any}(),
+        )
     end
 end
 
