@@ -1,3 +1,12 @@
+@kwdef struct OuterSettings{T <: AbstractFloat}
+    max_iter::UInt32    	= 10
+    time_limit::Float64     = Inf
+    verbose::Bool           = true
+    max_step_fraction::T    = 0.99
+end
+
+OuterSettings(args...) = OuterSettings{Float64}(args...)
+
 struct SQPSolver{T}
     mechanism::Mechanism{T}
     f::AbstractVector{<:AdjacentKnotPointsFunction}
@@ -6,7 +15,8 @@ struct SQPSolver{T}
     x::DiscreteTrajectory{T,T}
     λ::AbstractVector{T}
     v::AbstractVector{T}
-    settings::Clarabel.Settings{T}
+    inner_settings::Clarabel.Settings{T}
+    outer_settings::OuterSettings{T}
     guts::Dict{Symbol,Any}
 
     function SQPSolver(
@@ -17,7 +27,8 @@ struct SQPSolver{T}
         x::DiscreteTrajectory{T,T},
         λ::Union{AbstractVector{T},Nothing} = nothing,
         v::Union{AbstractVector{T},Nothing} = nothing,
-        settings::Union{Clarabel.Settings{T},Nothing} = nothing,
+        inner_settings::Union{Clarabel.Settings{T},Nothing} = nothing,
+        outer_settings::Union{OuterSettings{T},Nothing} = nothing,
     ) where {T}
         if isnothing(λ)
             λ = zeros(T, num_lagrange_multipliers(g))
@@ -25,15 +36,11 @@ struct SQPSolver{T}
         if isnothing(v)
             v = zeros(T, num_lagrange_multipliers(h))
         end
-        if isnothing(settings)
-            settings = Clarabel.Settings(
-                max_iter = 10,
-                time_limit = 60,
-                verbose = false,
-                max_step_fraction = 0.99,
-                tol_gap_abs = 1e-8,
-                tol_gap_rel = 1e-8,
-            )
+        if isnothing(inner_settings)
+            inner_settings = Clarabel.Settings()
+        end
+        if isnothing(outer_settings)
+            outer_settings = OuterSettings()
         end
 
         ng = num_lagrange_multipliers(g)
@@ -41,7 +48,7 @@ struct SQPSolver{T}
         nh = num_lagrange_multipliers(h)
         @assert length(v) == nh "equality constraint lagrange multipliers vector must have length $(nh) but has $(length(v))"
 
-        new{T}(mechanism, f, g, h, x, λ, v, settings, Dict{Symbol,Any}())
+        new{T}(mechanism, f, g, h, x, λ, v, inner_settings, outer_settings, Dict{Symbol,Any}())
     end
 end
 
@@ -57,7 +64,9 @@ equality_duals(solver::SQPSolver) = solver.v
 
 primal(solver::SQPSolver) = solver.x
 
-get_settings(solver::SQPSolver) = solver.settings
+get_inner_settings(solver::SQPSolver) = solver.inner_settings
+
+get_outer_settings(solver::SQPSolver) = solver.outer_settings
 
 function initialize_trajectory(
     mechanism::Mechanism{T},
@@ -219,7 +228,7 @@ function solve_qp(
     Jh::AbstractMatrix{T},
     ▽L::AbstractVector{T},
     ▽²L::AbstractMatrix{T},
-    settings::Clarabel.Settings{T},
+    inner_settings::Clarabel.Settings{T},
 ) where {T}
     P = sparse(▽²L)
     q = ▽L
@@ -233,7 +242,7 @@ function solve_qp(
     ]
     K = [Clarabel.NonnegativeConeT(length(g)), Clarabel.ZeroConeT(length(h))]
 
-    if settings.verbose
+    if inner_settings.verbose
         println("P $(size(P)): ", P)
         println("q $(size(q)): ", q)
         println("A $(size(A)): ", A)
@@ -241,7 +250,7 @@ function solve_qp(
         println("K $(size(K)): ", K)
     end
 
-    solver = Clarabel.Solver(P, q, A, b, K, settings)
+    solver = Clarabel.Solver(P, q, A, b, K, inner_settings)
     solution = Clarabel.solve!(solver)
     # solution.x → primal solution
     # solution.z → dual solution
@@ -254,8 +263,9 @@ function solve!(
     custom_gradients::Bool = false,
     expose_guts::Bool = true,
 ) where {T}
-    settings = get_settings(solver)
-    for k = 1:settings.max_iter
+    inner_settings = get_inner_settings(solver)
+    outer_settings = get_outer_settings(solver)
+    for k = 1:outer_settings.max_iter
         x = primal(solver)
         λ = inequality_duals(solver)
         v = equality_duals(solver)
@@ -291,7 +301,7 @@ function solve!(
         negate!(Jg)
         negate!(Jh)
 
-        pₖ, lₖ = solve_qp(g, Jg, h, Jh, ▽L, ▽²L, settings)
+        pₖ, lₖ = solve_qp(g, Jg, h, Jh, ▽L, ▽²L, inner_settings)
 
         if expose_guts
             push!(
@@ -305,12 +315,12 @@ function solve!(
         end
 
         # solution step
-        α = settings.max_step_fraction
+        α = outer_settings.max_step_fraction
         knotpoints(primal(solver)) .+= α .* pₖ
         inequality_duals(solver) .+= α .* @view lₖ[1:length(g)]
         equality_duals(solver) .+= α .* @view lₖ[(length(g)+1):end]
 
-        if expose_guts && k == settings.max_iter
+        if expose_guts && k == outer_settings.max_iter
             push!(get!(solver.guts, :primal, Vector{DiscreteTrajectory{T,T}}()), x)
             push!(get!(solver.guts, :inequality_duals, Vector{Vector{T}}()), λ)
             push!(get!(solver.guts, :equality_duals, Vector{Vector{T}}()), v)
@@ -318,7 +328,7 @@ function solve!(
             push!(get!(solver.guts, :lagrangian, Vector{T}()), L)
         end
 
-        if settings.verbose
+        if outer_settings.verbose
             println("primal x $(length(knotpoints(x))): ", x)
             println("dual λ $(length(λ)): ", λ)
             println("dual v $(length(v)): ", v)
