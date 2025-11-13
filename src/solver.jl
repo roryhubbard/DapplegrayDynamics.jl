@@ -328,8 +328,10 @@ function solve!(
         # solution step
         α = outer_settings.max_step_fraction
         knotpoints(primal(solver)) .+= α .* pₖ
-        inequality_duals(solver) .= @view lₖ[1:length(g)]
-        equality_duals(solver) .= @view lₖ[(length(g)+1):end]
+        Δλ = @view lₖ[1:length(g)] - inequality_duals(solver)
+        inequality_duals(solver) .+= α .* Δλ
+        Δv = @view lₖ[(length(g)+1):end] - equality_duals(solver)
+        equality_duals(solver) .+= α .* Δv
 
         if expose_guts && k == outer_settings.max_iter
             push!(get!(solver.guts, :primal, Vector{DiscreteTrajectory{T,T}}()), x)
