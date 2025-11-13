@@ -327,7 +327,8 @@ function solve!(
 
         # solution step
         α = outer_settings.max_step_fraction
-        @. knotpoints(primal(solver)) += α * pₖ
+        kp = knotpoints(primal(solver))
+        @. kp += α * pₖ
 
         ng = length(g)
         Δλ = @view lₖ[1:ng]
