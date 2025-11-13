@@ -282,23 +282,23 @@ function solve!(
         v = equality_duals(solver)
 
         if custom_gradients
-            f = evaluate_objective(objectives(solver), primal(solver))
-            ▽f = gradient(Val(Sum), objectives(solver), primal(solver))
-            ▽²f = hessian(objectives(solver), primal(solver))
+            f = evaluate_objective(objectives(solver), x)
+            ▽f = gradient(Val(Sum), objectives(solver), x)
+            ▽²f = hessian(objectives(solver), x)
 
-            g = evaluate_constraints(inequality_constraints(solver), primal(solver))
-            Jg = jacobian(inequality_constraints(solver), primal(solver))
-            ▽²g = vector_hessian(inequality_constraints(solver), primal(solver), λ)
+            g = evaluate_constraints(inequality_constraints(solver), x)
+            Jg = jacobian(inequality_constraints(solver), x)
+            ▽²g = vector_hessian(inequality_constraints(solver), x, λ)
 
-            h = evaluate_constraints(equality_constraints(solver), primal(solver))
-            Jh = jacobian(equality_constraints(solver), primal(solver))
-            ▽²h = vector_hessian(equality_constraints(solver), primal(solver), v)
+            h = evaluate_constraints(equality_constraints(solver), x)
+            Jh = jacobian(equality_constraints(solver), x)
+            ▽²h = vector_hessian(equality_constraints(solver), x, v)
         else
-            f, ▽f, ▽²f = super_hessian_objective(objectives(solver), primal(solver))
+            f, ▽f, ▽²f = super_hessian_objective(objectives(solver), x)
             g, Jg, ▽²g =
-                super_hessian_constraints(inequality_constraints(solver), primal(solver), λ)
+                super_hessian_constraints(inequality_constraints(solver), x, λ)
             h, Jh, ▽²h =
-                super_hessian_constraints(equality_constraints(solver), primal(solver), v)
+                super_hessian_constraints(equality_constraints(solver), x, v)
         end
 
         L = f + λ' * g + v' * h
@@ -327,21 +327,21 @@ function solve!(
 
         # solution step
         α = outer_settings.max_step_fraction
-        kp = knotpoints(primal(solver))
+        kp = knotpoints(x)
         @. kp += α * pₖ
 
         ng = length(g)
         Δλ = @view lₖ[1:ng]
         # Δλ ← Δλ − λ
-        Δλ .-= inequality_duals(solver)
+        Δλ .-= λ
         # λ ← λ + α * Δλ
-        @. inequality_duals(solver) += α * Δλ
+        @. λ += α * Δλ
 
         Δv = @view lₖ[ng+1:end]
         # Δv ← Δv − v
-        Δv .-= equality_duals(solver)
+        Δv .-= v
         # v ← v + α * Δv
-        @. equality_duals(solver) += α * Δv
+        @. v += α * Δv
 
         if expose_guts && k == outer_settings.max_iter
             push!(get!(solver.guts, :primal, Vector{DiscreteTrajectory{T,T}}()), x)
