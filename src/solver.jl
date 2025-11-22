@@ -305,10 +305,6 @@ function solve!(
         ▽L = ▽f + Jg' * λ + Jh' * v
         ▽²L = ▽²f + ▽²g + ▽²h
 
-        # Add regularization to ensure positive definiteness
-        ϵ = 1e-6
-        ▽²L += ϵ * I
-
         negate!(Jg)
         negate!(Jh)
 
