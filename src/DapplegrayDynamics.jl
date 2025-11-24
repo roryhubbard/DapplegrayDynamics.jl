@@ -100,8 +100,8 @@ function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     solver = SQPSolver(
         mechanism,
         objectives,
-        equality_constraints,
         inequality_constraints,
+        equality_constraints,
         initial_solution,
     )
 
@@ -139,8 +139,8 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat, maxev
     solver = SQPSolver(
         mechanism,
         objectives,
-        equality_constraints,
         inequality_constraints,
+        equality_constraints,
         initial_solution,
         nothing,
         nothing,
