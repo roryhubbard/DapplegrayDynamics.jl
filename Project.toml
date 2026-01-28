@@ -27,7 +27,7 @@ ProgressMeter = "1.11.0"
 RigidBodyDynamics = "2.5.0"
 SparseArrays = "1.11.0"
 StaticArrays = "1.9"
-UnoSolver = "0.1.2"
+UnoSolver = "0.1.2, 0.2"
 julia = "1.11"
 
 [extras]
