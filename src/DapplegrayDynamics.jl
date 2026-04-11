@@ -100,8 +100,8 @@ function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     solver = SQPSolver(
         mechanism,
         objectives,
-        equality_constraints,
         inequality_constraints,
+        equality_constraints,
         initial_solution,
     )
 
@@ -110,7 +110,7 @@ function acrobot_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     solver
 end
 
-function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
+function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat, maxeval::Int)
     prob = setup_swingup_problem(mechanism, N, tf)
 
     xf = [π, 0]  # swing up
@@ -139,9 +139,13 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat)
     solver = SQPSolver(
         mechanism,
         objectives,
-        equality_constraints,
         inequality_constraints,
+        equality_constraints,
         initial_solution,
+        nothing,
+        nothing,
+        nothing,
+        OuterSettings(max_iter = maxeval),
     )
 
     solve!(solver)

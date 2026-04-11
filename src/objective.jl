@@ -38,5 +38,6 @@ function (cost::LQRCost)(z::DiscreteTrajectory)
     u = control(z, 1)
     x̄ = (x - cost.xd)
     ū = (u - cost.ud)
-    1 / 2 * (x̄' * cost.Q * x̄ + ū' * cost.R * ū)
+    Δt = timesteps(z)[1]
+    1 / 2 * (x̄' * cost.Q * x̄ + ū' * cost.R * ū) * Δt
 end
