@@ -85,7 +85,6 @@ function state(trajectory::DiscreteTrajectory, idx::Int)
     x
 end
 function state(trajectory::DiscreteTrajectory, ::Val{N}) where {N}
-    k = knotpoints(trajectory)
     return ntuple(i -> state(trajectory, i), Val(N))
 end
 function state_trajectory(trajectory::DiscreteTrajectory)
@@ -115,7 +114,6 @@ function control(trajectory::DiscreteTrajectory, idx::Int)
     u
 end
 function control(trajectory::DiscreteTrajectory, ::Val{N}) where {N}
-    k = knotpoints(trajectory)
     return ntuple(i -> control(trajectory, i), Val(N))
 end
 function control_trajectory(trajectory::DiscreteTrajectory)
