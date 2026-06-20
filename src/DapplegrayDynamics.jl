@@ -44,8 +44,8 @@ function setup_swingup_problem(
     Δt = tf / (N - 1)
 
     x0 = zeros(nx)
-    Q = Q_weight * I(nx) * Δt
-    R = R_weight * I(nu) * Δt
+    Q = Q_weight * I(nx)
+    R = R_weight * I(nu)
 
     return (
         nq = nq,
