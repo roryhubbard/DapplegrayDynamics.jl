@@ -89,7 +89,7 @@ function state_equality_constraint(
     outputdim = length(xd)
     A = spzeros(outputdim, knotpointsize)
     A[:, 1:outputdim] .= I(outputdim)
-    b = zeros(outputdim)
+    b = xd
     ConicConstraint(A, b, Clarabel.ZeroConeT, idx, 1)
 end
 
