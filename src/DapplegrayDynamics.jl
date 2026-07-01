@@ -33,7 +33,7 @@ function setup_swingup_problem(
     N::Int,
     tf::AbstractFloat;
     nu::Int = 1,
-    Q_weight::Float64 = 0.1,
+    Q_weight::Float64 = 0.0,
     R_weight::Float64 = 1.0,
     τbound::Float64 = 3.0,
 )
