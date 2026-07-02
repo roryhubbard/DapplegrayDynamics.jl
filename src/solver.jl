@@ -116,6 +116,7 @@ function initialize_trajectory(
 end
 
 function num_lagrange_multipliers(constraints::AbstractVector{<:AdjacentKnotPointsFunction})
+    isempty(constraints) && return 0
     sum(outputdim(c) * length(indices(c)) for c ∈ constraints)
 end
 
@@ -187,6 +188,9 @@ function super_hessian_constraints(
 ) where {T}
     z = knotpoints(Z)
     n = length(z)
+    if isempty(constraints)
+        return T[], zeros(T, 0, n), Symmetric(zeros(T, n, n))
+    end
     m = sum(length(indices(con)) * outputdim(con) for con ∈ constraints)
     y = zeros(T, m * n)
     H = DiffResults.JacobianResult(y, z)
