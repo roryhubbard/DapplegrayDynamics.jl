@@ -26,7 +26,7 @@ include("objective.jl")
 include("rigidbodydynamics.jl")
 include("solver.jl")
 
-export acrobot_swingup, pendulum_swingup, pendulum_swingup_nlopt, pendulum_swingup_noineq
+export acrobot_swingup, pendulum_swingup, pendulum_swingup_nlopt
 
 function setup_swingup_problem(
     mechanism::Mechanism,
@@ -117,7 +117,7 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat, maxev
 
     objectives = [LQRCost(prob.Q, prob.R, xf, 1:N)]
 
-    inequality_constraints = create_control_bounds(prob.knotpointsize, N, prob.τbound)
+    inequality_constraints = AdjacentKnotPointsFunction[]  # none for now
 
     @assert isodd(N) "N needs to be odd for SeparatedHermiteSimpsonConstraint but it is $N"
     equality_constraints = [
@@ -150,44 +150,6 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat, maxev
 
     solve!(solver)
 
-    solver
-end
-
-function pendulum_swingup_noineq(
-    mechanism::Mechanism,
-    N::Int,
-    tf::AbstractFloat,
-    maxeval::Int,
-)
-    prob = setup_swingup_problem(mechanism, N, tf)
-    xf = [π, 0]
-    objectives = [LQRCost(prob.Q, prob.R, xf, 1:N)]
-    inequality_constraints = AdjacentKnotPointsFunction[]  # empty!
-
-    @assert isodd(N)
-    equality_constraints = [
-        [SeparatedHermiteSimpsonConstraint(mechanism, i, [1]) for i = 1:2:(N-2)]...,
-        create_boundary_constraints(prob.x0, xf, prob.knotpointsize, N)...,
-    ]
-    initial_solution = initialize_trajectory(
-        mechanism, N, tf, prob.nu,
-        zeros(typeof(tf), prob.nq),
-        [Float64(π)],
-        zeros(typeof(tf), prob.nv),
-        zeros(typeof(tf), prob.nv),
-    )
-    solver = SQPSolver(
-        mechanism,
-        objectives,
-        inequality_constraints,
-        equality_constraints,
-        initial_solution,
-        nothing,
-        nothing,
-        nothing,
-        OuterSettings(max_iter = maxeval),
-    )
-    solve!(solver)
     solver
 end
 
