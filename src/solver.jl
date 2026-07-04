@@ -3,6 +3,10 @@
     time_limit::Float64 = Inf
     verbose::Bool = true
     max_step_fraction::T = 0.99
+    # Null-space decomposition method: :qr or :svd
+    factorization::Symbol = :svd
+    # Tolerance for numerical rank detection when using :svd
+    svd_tol::T = 1e-8
 end
 
 OuterSettings(args...) = OuterSettings{Float64}(args...)
@@ -273,6 +277,51 @@ function solve_qp(
     (solution.x, solution.z)
 end
 
+# ──── Null-space decomposition ────
+
+function _nullspace_of_YT(Y::Matrix{T}) where {T}
+    # Compute orthonormal basis for nullspace of Yᵀ.
+    # Y is n×r orthonormal; Z is n×(n−r), YᵀZ = 0.
+    n = size(Y, 1)
+    Zmat = nullspace(Y')
+    return Zmat
+end
+
+function compute_null_range_bases_qr(Jhᵀ::Matrix{T}) where {T}
+    n, m = size(Jhᵀ)
+    F = qr(Jhᵀ)
+    Q = Matrix(F.Q)
+    Y = Q[:, 1:m]
+    Z = _nullspace_of_YT(Y)
+    # Precomputed: Jh·Y = R₁ᵀ (avoids forming Jhᵀ' * Y)
+    JhY = F.R'
+    return Z, Y, m, JhY
+end
+
+function compute_null_range_bases_svd(Jhᵀ::Matrix{T}, tol::T) where {T}
+    n, m = size(Jhᵀ)
+    F = svd(Jhᵀ)
+    σ = F.S
+    σ_max = first(σ)
+    r = count(σ .> tol * σ_max)
+    U_thin = F.U
+    Y = U_thin[:, 1:r]
+    Z = _nullspace_of_YT(Y)
+    return Z, Y, r, nothing  # no precomputed JhY for SVD
+end
+
+function compute_null_range_bases(
+    Jhᵀ::Matrix{T}, method::Symbol, tol::T,
+) where {T}
+    if method == :qr
+        return compute_null_range_bases_qr(Jhᵀ)
+    elseif method == :svd
+        return compute_null_range_bases_svd(Jhᵀ, tol)
+    else
+        error("Unknown factorization: $method. Use :qr or :svd.")
+    end
+end
+
 function solve!(
     solver::SQPSolver{T},
     custom_gradients::Bool = false,
@@ -309,9 +358,22 @@ function solve!(
         ▽L = ▽f + Jg' * λ + Jh' * v
         ▽²L = ▽²f + ▽²g + ▽²h
 
+        # ── Regularize Hessian via null-space projection ──
+        Jh_orig = copy(Jh)
+        ∇h = Matrix(Jh_orig')
+        Z, Y, r, _ = compute_null_range_bases(
+            ∇h, outer_settings.factorization, outer_settings.svd_tol,
+        )
+        R = Z' * ▽²L * Z
+        λ_min_R = minimum(eigvals(Symmetric(R)))
+        if λ_min_R ≤ 0
+            shift = abs(λ_min_R) + 1e-8
+            ▽²L .+= Z * (shift * I(size(Z, 2))) * Z'
+        end
+
+        # ── QP solve (Clarabel) ──
         negate!(Jg)
         negate!(Jh)
-
         pₖ, lₖ = solve_qp(g, Jg, h, Jh, ▽L, ▽²L, inner_settings)
 
         if expose_guts
@@ -332,15 +394,11 @@ function solve!(
 
         ng = length(g)
         Δλ = @view lₖ[1:ng]
-        # Δλ ← Δλ − λ
         Δλ .-= λ
-        # λ ← λ + α * Δλ
         @. λ += α * Δλ
 
         Δv = @view lₖ[ng+1:end]
-        # Δv ← Δv − v
         Δv .-= v
-        # v ← v + α * Δv
         @. v += α * Δv
 
         if expose_guts && k == outer_settings.max_iter
@@ -372,8 +430,8 @@ function solve!(
             println("▽L $(size(▽L)): ", ▽L)
             println("▽²L $(size(▽²L)): ", ▽²L)
 
-            println("QP primal pₖ $(length(pₖ)): ", pₖ)
-            println("QP dual lₖ $(length(lₖ)): ", lₖ)
+            println("rank(Jh) = $r / $(size(Jh,1)), null dim = $(size(Z,2))")
+            println("step pₖ $(length(pₖ)): ", pₖ)
         end
     end
 end
