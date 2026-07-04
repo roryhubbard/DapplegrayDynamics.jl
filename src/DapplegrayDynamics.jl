@@ -120,6 +120,9 @@ function pendulum_swingup(mechanism::Mechanism, N::Int, tf::AbstractFloat, maxev
     inequality_constraints = AdjacentKnotPointsFunction[]  # none for now
 
     @assert isodd(N) "N needs to be odd for SeparatedHermiteSimpsonConstraint but it is $N"
+    # TODO: ordering of the constraints has implications for the sparsity
+    # pattern of the constraint jacobian. Should the solver permute this to try
+    # and achieve an optimal sparsity pattern?
     equality_constraints = [
         [SeparatedHermiteSimpsonConstraint(mechanism, i, [1]) for i = 1:2:(N-2)]...,
         create_boundary_constraints(prob.x0, xf, prob.knotpointsize, N)...,
