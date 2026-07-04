@@ -3,10 +3,6 @@
     time_limit::Float64 = Inf
     verbose::Bool = true
     max_step_fraction::T = 0.99
-    # Null-space decomposition method: :qr or :svd
-    factorization::Symbol = :svd
-    # Tolerance for numerical rank detection when using :svd
-    svd_tol::T = 1e-8
 end
 
 OuterSettings(args...) = OuterSettings{Float64}(args...)
@@ -279,47 +275,15 @@ end
 
 # ──── Null-space decomposition ────
 
-function _nullspace_of_YT(Y::Matrix{T}) where {T}
-    # Compute orthonormal basis for nullspace of Yᵀ.
-    # Y is n×r orthonormal; Z is n×(n−r), YᵀZ = 0.
-    n = size(Y, 1)
-    Zmat = nullspace(Y')
-    return Zmat
-end
-
-function compute_null_range_bases_qr(Jhᵀ::Matrix{T}) where {T}
+function compute_null_range_bases(Jhᵀ::Matrix{T}) where {T}
     n, m = size(Jhᵀ)
     F = qr(Jhᵀ)
-    Q = Matrix(F.Q)
-    Y = Q[:, 1:m]
-    Z = _nullspace_of_YT(Y)
-    # Precomputed: Jh·Y = R₁ᵀ (avoids forming Jhᵀ' * Y)
+    Y = Matrix(F.Q)              # thin Q = Q₁ (n×m)
+    Q_full = F.Q * I             # full Q (n×n)
+    Z = Q_full[:, m+1:end]       # Q₂
+    # Jh·Y = Rᵀ (from Aᵀ = Y·R → Jh = Rᵀ·Yᵀ → Jh·Y = Rᵀ)
     JhY = F.R'
-    return Z, Y, m, JhY
-end
-
-function compute_null_range_bases_svd(Jhᵀ::Matrix{T}, tol::T) where {T}
-    n, m = size(Jhᵀ)
-    F = svd(Jhᵀ)
-    σ = F.S
-    σ_max = first(σ)
-    r = count(σ .> tol * σ_max)
-    U_thin = F.U
-    Y = U_thin[:, 1:r]
-    Z = _nullspace_of_YT(Y)
-    return Z, Y, r, nothing  # no precomputed JhY for SVD
-end
-
-function compute_null_range_bases(
-    Jhᵀ::Matrix{T}, method::Symbol, tol::T,
-) where {T}
-    if method == :qr
-        return compute_null_range_bases_qr(Jhᵀ)
-    elseif method == :svd
-        return compute_null_range_bases_svd(Jhᵀ, tol)
-    else
-        error("Unknown factorization: $method. Use :qr or :svd.")
-    end
+    return Z, Y, JhY
 end
 
 function solve!(
@@ -358,33 +322,69 @@ function solve!(
         ▽L = ▽f + Jg' * λ + Jh' * v
         ▽²L = ▽²f + ▽²g + ▽²h
 
-        # ── Regularize Hessian via null-space projection ──
-        Jh_orig = copy(Jh)
-        ∇h = Matrix(Jh_orig')
-        Z, Y, r, _ = compute_null_range_bases(
-            ∇h, outer_settings.factorization, outer_settings.svd_tol,
-        )
-        R = Z' * ▽²L * Z
-        λ_min_R = minimum(eigvals(Symmetric(R)))
+        # ── Null-space decomposition ──
+        ∇h = Matrix(Jh')
+        Z, Y, JhY = compute_null_range_bases(∇h)
+
+        # Range-space step: satisfies Jh·p = −h exactly
+        p_y = -JhY \ h
+
+        # Reduced Hessian: Zᵀ∇²L Z (PSD after regularization)
+        R_red = Z' * ▽²L * Z
+        λ_min_R = minimum(eigvals(Symmetric(R_red)))
         if λ_min_R ≤ 0
-            shift = abs(λ_min_R) + 1e-8
-            ▽²L .+= Z * (shift * I(size(Z, 2))) * Z'
+            R_red .+= (abs(λ_min_R) + 1e-8) * I(size(R_red, 1))
         end
 
-        # ── QP solve (Clarabel) ──
-        negate!(Jg)
-        negate!(Jh)
-        pₖ, lₖ = solve_qp(g, Jg, h, Jh, ▽L, ▽²L, inner_settings)
+        # Reduced gradient: Zᵀ(∇L + ∇²L·Y·p_y)
+        g_red = Z' * (▽L + ▽²L * (Y * p_y))
+
+        # Reduced inequality: g + Jg·(Y·p_y) + Jg·Z·p_z ≤ 0
+        g_ineq_red = g + Jg * (Y * p_y)
+        Jg_red = Jg * Z
+
+        # ── Solve reduced-space QP with Clarabel ──
+        # min  ½p_zᵀR_red p_z + g_redᵀp_z
+        # s.t. g_ineq_red + Jg_red·p_z ≤ 0  →  Jg_red·p_z ≤ −g_ineq_red
+        # Clarabel: Ap ≤ b  with  A = Jg_red, b = −g_ineq_red
+        nz = size(R_red, 1)
+        ng_ineq = length(g_ineq_red)
+        cones = if ng_ineq > 0
+            [Clarabel.NonnegativeConeT(ng_ineq)]
+        else
+            Clarabel.SupportedCone[]
+        end
+        A_qp = sparse(ng_ineq > 0 ? Jg_red : zeros(T, 0, nz))
+        b_qp = ng_ineq > 0 ? -g_ineq_red : Float64[]
+        solver_qp = Clarabel.Solver(
+            sparse(R_red), g_red, A_qp, b_qp, cones;
+            verbose = inner_settings.verbose,
+        )
+        solution_qp = Clarabel.solve!(solver_qp)
+        p_z = solution_qp.x
+
+        # Recover full step and multipliers
+        pₖ = Y * p_y + Z * p_z
+
+        # Equality multipliers: (Jh·Y)ᵀ v_new = Yᵀ(∇f + ∇²L·pₖ)
+        if size(Y, 2) > 0
+            v_new = JhY' \ (Y' * (▽f + ▽²L * pₖ))
+        else
+            v_new = zeros(T, 0)
+        end
+
+        # Inequality multipliers: from Clarabel duals
+        if ng_ineq > 0
+            λ_new = solution_qp.z
+        else
+            λ_new = zeros(T, 0)
+        end
 
         if expose_guts
             push!(
                 get!(solver.guts, :primal, Vector{DiscreteTrajectory{T,T}}()),
                 deepcopy(x),
             )
-            push!(get!(solver.guts, :inequality_duals, Vector{Vector{T}}()), deepcopy(λ))
-            push!(get!(solver.guts, :equality_duals, Vector{Vector{T}}()), deepcopy(v))
-            push!(get!(solver.guts, :objective, Vector{T}()), deepcopy(f))
-            push!(get!(solver.guts, :lagrangian, Vector{T}()), deepcopy(L))
         end
 
         # solution step
@@ -392,14 +392,13 @@ function solve!(
         kp = knotpoints(x)
         @. kp += α * pₖ
 
-        ng = length(g)
-        Δλ = @view lₖ[1:ng]
-        Δλ .-= λ
-        @. λ += α * Δλ
-
-        Δv = @view lₖ[ng+1:end]
-        Δv .-= v
-        @. v += α * Δv
+        # Update multipliers (damped)
+        if !isempty(λ_new)
+            @. λ = (1 - α) * λ + α * λ_new
+        end
+        if !isempty(v_new)
+            @. v = (1 - α) * v + α * v_new
+        end
 
         if expose_guts && k == outer_settings.max_iter
             push!(get!(solver.guts, :primal, Vector{DiscreteTrajectory{T,T}}()), x)
@@ -430,7 +429,7 @@ function solve!(
             println("▽L $(size(▽L)): ", ▽L)
             println("▽²L $(size(▽²L)): ", ▽²L)
 
-            println("rank(Jh) = $r / $(size(Jh,1)), null dim = $(size(Z,2))")
+            println("rank(Jh) = $(size(Y,2)), null dim = $(size(Z,2))")
             println("step pₖ $(length(pₖ)): ", pₖ)
         end
     end
