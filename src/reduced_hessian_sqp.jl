@@ -22,6 +22,15 @@ Settings for the reduced Hessian SQP algorithm.
     ls_α_initial::T = 1.0
     ls_β::T = 0.5  # Backtracking factor
     ls_c1::T = 1e-4  # Armijo parameter
+
+    # Null-space decomposition method: :qr or :svd.
+    # :qr — QR factorization, fast, uses all m constraints
+    # :svd — SVD with numerical rank detection, drops near-redundant constraints
+    factorization::Symbol = :svd
+
+    # Tolerance for numerical rank detection when using :svd.
+    # Singular values ≤ tol·σ_max are treated as zero.
+    svd_tol::T = 1e-8
 end
 
 """
@@ -77,44 +86,63 @@ function ReducedHessianSQPSolver(
 end
 
 """
-    compute_null_range_bases(∇h::Matrix{T}) -> (Z, Y)
+    compute_null_range_bases(Jhᵀ, method, tol) -> (Z, Y, r)
 
-Compute orthonormal bases for null space and range space of ∇h^T.
+Compute orthonormal bases for null space and range space of Jh.
 
-Uses QR factorization: if ∇h = [Y R; 0 0] then
-- Y: range space basis (first m columns of Q)
-- Z: null space basis (last n-m columns of Q)
+Dispatches on `method`:
+- :qr — QR factorization of Jhᵀ, fast, uses all m constraints
+- :svd — SVD with numerical rank detection, drops near-redundant constraints
 
 # Returns
-- Z: n × (n-m) matrix, columns span null(∇h^T)
-- Y: n × m matrix, columns span range(∇h)
+- Z: n × (n−r) matrix, columns span null(Jh)
+- Y: n × r matrix, columns span range(Jhᵀ)
+- r: numerical rank
 """
-function compute_null_range_bases(∇h::Matrix{T}) where T
-    n, m = size(∇h)  # n variables, m constraints
+function compute_null_range_bases(Jhᵀ::Matrix{T}, method::Symbol, tol::T) where T
+    if method == :qr
+        return compute_null_range_bases_qr(Jhᵀ)
+    elseif method == :svd
+        return compute_null_range_bases_svd(Jhᵀ, tol)
+    else
+        error("Unknown factorization method: $method. Use :qr or :svd.")
+    end
+end
 
-    # QR factorization of ∇h
-    Q, R = qr(∇h)
-    Q = Matrix(Q)  # Convert to dense for easier indexing
-
-    # Y = first m columns (range space)
-    # Z = last (n-m) columns (null space)
+function compute_null_range_bases_qr(Jhᵀ::Matrix{T}) where T
+    n, m = size(Jhᵀ)
+    Q, R = qr(Jhᵀ)
+    Q = Matrix(Q)
     Y = Q[:, 1:m]
     Z = Q[:, m+1:end]
+    return Z, Y, m
+end
 
-    return Z, Y
+function compute_null_range_bases_svd(Jhᵀ::Matrix{T}, tol::T) where T
+    n, m = size(Jhᵀ)
+    F = svd(Jhᵀ)
+    σ = F.S
+    σ_max = first(σ)
+    r = count(σ .> tol * σ_max)
+    U = F.U
+    Y = U[:, 1:r]
+    Z = U[:, r+1:end]
+    return Z, Y, r
 end
 
 """
-    compute_range_space_step(∇h, Y, h) -> p_y
+    compute_range_space_step(Jhᵀ, Y) -> (p_y, JhY)
 
-Compute range space component to satisfy linearized constraints.
+Compute range space component p_y and return the factor Jh·Y
+(reused for the multiplier update).
 
-Solves: ∇h^T Y p_y = -h
+The constraint Jh·p = −h is solved as:
+    Jh·Y p_y = −h  →  p_y = −(Jh·Y) \\ h
 """
-function compute_range_space_step(∇h::Matrix{T}, Y::Matrix{T}, h::Vector{T}) where T
-    # p_y = -(∇h^T Y)^{-1} h
-    p_y = -(∇h' * Y) \ h
-    return p_y
+function compute_range_space_step(Jhᵀ::Matrix{T}, Y::Matrix{T}, h::Vector{T}) where T
+    JhY = (Jhᵀ' * Y)'    # m × r, full column rank
+    p_y = -JhY \ h        # r × 1
+    return p_y, JhY
 end
 
 """
@@ -277,21 +305,37 @@ function solve!(solver::ReducedHessianSQPSolver{T}) where T
         if isempty(h_val)
             # No equality constraints - just use Newton step
             dx = -∇²L \ ∇f
+            λ_new = Float64[]
         else
             # Compute null and range space bases
             # Note: Jh is the Jacobian (m × n), so ∇h = Jh' (n × m)
             ∇h = Matrix(Jh')
-            Z, Y = compute_null_range_bases(∇h)
+            Z, Y, r = compute_null_range_bases(
+                ∇h, settings.factorization, settings.svd_tol,
+            )
 
-            # Range space step (satisfies linearized constraints)
-            p_y = compute_range_space_step(∇h, Y, h_val)
+            # Range space step and factor Jh·Y (reused for multiplier update)
+            p_y, JhY = compute_range_space_step(∇h, Y, h_val)
 
             # Null space step (minimizes in reduced space with exact Hessian)
-            # Uses R = Z^T ∇²L Z as the reduced Hessian
             p_z = compute_null_space_step(Z, ∇²L, ∇f, Y, p_y)
 
             # Total step: dx = Z p_z + Y p_y
             dx = Z * p_z + Y * p_y
+
+            # Multiplier update from (16.5) in Nocedal & Wright:
+            # (Jh·Y)ᵀ λ_new = Yᵀ(∇f + ∇²L·p)
+            if r > 0
+                rhs_mult = Y' * (∇f + ∇²L * dx)
+                λ_new = JhY' \ rhs_mult
+            else
+                λ_new = Float64[]
+            end
+
+            if settings.verbose
+                @printf("  rank(Jh) = %d / %d, null dim = %d\n",
+                        r, size(Jh, 1), size(Z, 2))
+            end
         end
 
         # Line search with merit function
@@ -309,9 +353,10 @@ function solve!(solver::ReducedHessianSQPSolver{T}) where T
         kp = knotpoints(solver.x)
         kp .+= α * dx
 
-        # Update dual variables using least-squares multiplier estimate
-        # λ_{k+1} = (Jh Jh')^{-1} Jh ∇f_{k+1}
-        # For now, keep multipliers fixed (can be improved with proper dual update)
+        # Update equality multipliers (damped toward the QP estimate)
+        if !isempty(λ_new)
+            @. solver.λ = (1 - α) * solver.λ + α * λ_new
+        end
 
         # Update penalty parameter if needed (ensure ρ > ||λ||_∞ and ||ν||_∞)
         if !isempty(λ_k)
