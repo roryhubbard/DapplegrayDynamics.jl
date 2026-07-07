@@ -345,40 +345,22 @@ function solve!(
 
         # ── Solve reduced-space QP with Clarabel ──
         # min  ½p_zᵀR_red p_z + g_redᵀp_z
-        # s.t. g_ineq_red + Jg_red·p_z ≤ 0  →  Jg_red·p_z ≤ −g_ineq_red
-        # Clarabel: Ap ≤ b  with  A = Jg_red, b = −g_ineq_red
-        nz = size(R_red, 1)
-        ng_ineq = length(g_ineq_red)
-        cones = if ng_ineq > 0
-            [Clarabel.NonnegativeConeT(ng_ineq)]
-        else
-            Clarabel.SupportedCone[]
-        end
-        A_qp = sparse(ng_ineq > 0 ? Jg_red : zeros(T, 0, nz))
-        b_qp = ng_ineq > 0 ? -g_ineq_red : Float64[]
-        solver_qp = Clarabel.Solver(
-            sparse(R_red), g_red, A_qp, b_qp, cones;
-            verbose = inner_settings.verbose,
+        # s.t. g_ineq_red + Jg_red·p_z ≤ 0
+        # solve_qp encodes: Ap ≤ b via NonnegativeCone
+        # with A = Jg_red, b = −g_ineq_red
+        p_z, l_red = solve_qp(
+            -g_ineq_red, Jg_red,
+            T[], zeros(T, 0, size(R_red, 1)),
+            g_red, R_red, inner_settings,
         )
-        solution_qp = Clarabel.solve!(solver_qp)
-        p_z = solution_qp.x
 
         # Recover full step and multipliers
         pₖ = Y * p_y + Z * p_z
 
         # Equality multipliers: (Jh·Y)ᵀ v_new = Yᵀ(∇f + ∇²L·pₖ)
-        if size(Y, 2) > 0
-            v_new = JhY' \ (Y' * (▽f + ▽²L * pₖ))
-        else
-            v_new = zeros(T, 0)
-        end
+        v_new = JhY' \ (Y' * (▽f + ▽²L * pₖ))
 
-        # Inequality multipliers: from Clarabel duals
-        if ng_ineq > 0
-            λ_new = solution_qp.z
-        else
-            λ_new = zeros(T, 0)
-        end
+        λ_new = l_red
 
         if expose_guts
             push!(
@@ -429,7 +411,17 @@ function solve!(
             println("▽L $(size(▽L)): ", ▽L)
             println("▽²L $(size(▽²L)): ", ▽²L)
 
-            println("rank(Jh) = $(size(Y,2)), null dim = $(size(Z,2))")
+            println("null-space decomp:")
+            println("  Y  (range)   = $(size(Y))")
+            println("  Z  (null)    = $(size(Z))")
+            println("  JhY = Rᵀ    = $(size(JhY))")
+            println("  p_y          = $(length(p_y))")
+            println("  R_red        = $(size(R_red))")
+            println("  g_red        = $(length(g_red))")
+            println("  g_ineq_red   = $(length(g_ineq_red))")
+            println("  Jg_red       = $(size(Jg_red))")
+            println("  p_z          = $(length(p_z))")
+
             println("step pₖ $(length(pₖ)): ", pₖ)
         end
     end
