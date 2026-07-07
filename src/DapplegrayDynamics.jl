@@ -26,7 +26,7 @@ include("objective.jl")
 include("rigidbodydynamics.jl")
 include("solver.jl")
 
-export acrobot_swingup, pendulum_swingup, pendulum_swingup_nlopt
+export acrobot_swingup, pendulum_swingup, pendulum_swingup_nlopt, sqp_noineq
 
 function setup_swingup_problem(
     mechanism::Mechanism,
@@ -325,5 +325,18 @@ function df(urdf::Bool = true)
     mechanism = urdf ? load_acrobot() : doublependulum()
     acrobot_swingup(mechanism, 50, 10.0)
 end
+
+function sqp_noineq()
+    mechanism = load_pendulum()
+    solver = pendulum_swingup(mechanism, 3, 1.0, 1)
+    traj = primal(solver)
+    println("position trajectory")
+    println(position_trajectory(traj))
+    println("velocity trajectory")
+    println(velocity_trajectory(traj))
+    println("control trajectory")
+    println(control_trajectory(traj))
+end
+
 
 end
