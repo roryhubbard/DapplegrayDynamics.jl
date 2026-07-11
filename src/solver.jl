@@ -281,9 +281,9 @@ function compute_null_range_bases(Jhᵀ::Matrix{T}) where {T}
     Y = Matrix(F.Q)              # thin Q = Q₁ (n×m)
     Q_full = F.Q * I             # full Q (n×n)
     Z = Q_full[:, m+1:end]       # Q₂
-    # Jh·Y = Rᵀ (from Aᵀ = Y·R → Jh = Rᵀ·Yᵀ → Jh·Y = Rᵀ)
+    # Jh·Y = Rᵀ (from Aᵀ = Y·R → Jh = Rᵀ·Yᵀ → Jh·Y = Rᵀ·Yᵀ·Y = Rᵀ)
     JhY = F.R'
-    return Z, Y, JhY
+    return Y, Z, JhY
 end
 
 function solve!(
@@ -324,7 +324,7 @@ function solve!(
 
         # ── Null-space decomposition ──
         ∇h = Matrix(Jh')
-        Z, Y, JhY = compute_null_range_bases(∇h)
+        Y, Z, JhY = compute_null_range_bases(∇h)
 
         # Range-space step: satisfies Jh·p = −h exactly
         p_y = -JhY \ h
