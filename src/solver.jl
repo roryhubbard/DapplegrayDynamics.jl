@@ -2,7 +2,8 @@
     max_iter::UInt32 = 10
     time_limit::Float64 = Inf
     verbose::Bool = true
-    max_step_fraction::T = 0.99
+    μ_init::T = 1.0               # initial augmented Lagrangian penalty
+    merit_function::Symbol = :fletcher  # :fletcher or :standard               # initial augmented Lagrangian penalty
 end
 
 OuterSettings(args...) = OuterSettings{Float64}(args...)
@@ -278,12 +279,37 @@ end
 function compute_null_range_bases(Jhᵀ::Matrix{T}) where {T}
     n, m = size(Jhᵀ)
     F = qr(Jhᵀ)
-    Y = Matrix(F.Q)              # thin Q = Q₁ (n×m)
-    Q_full = F.Q * I             # full Q (n×n)
-    Z = Q_full[:, m+1:end]       # Q₂
-    # Jh·Y = Rᵀ (from Aᵀ = Y·R → Jh = Rᵀ·Yᵀ → Jh·Y = Rᵀ·Yᵀ·Y = Rᵀ)
-    JhY = F.R'
+    Y = Matrix(F.Q)
+    Q_full = F.Q * I
+    # Rank detection: Hermite-Simpson constraints become linearly dependent
+    # when velocity is zero (initial straight-line trajectory). The dynamics
+    # equations for θ̈ at consecutive collocation points have identical structure.
+    # Dropping columns where |R[i,i]| ≈ 0 moves the redundant directions from
+    # the range space Y into the null space Z, keeping JhY well-conditioned.
+    # TODO: consider just usig SVD
+    Rdiag = abs.(diag(F.R))
+    r = count(Rdiag .> T(1e-8) * maximum(Rdiag))
+    Y = Y[:, 1:r]
+    Z = Q_full[:, r+1:n]
+    # Jh·Y = R₁ᵀ (from Aᵀ = Y·R₁ → Jh·Y = R₁ᵀ)
+    JhY = F.R[1:r, 1:r]'
     return Y, Z, JhY
+end
+
+function standard_auglag_merit(f::T, h::AbstractVector{T}, v::AbstractVector{T},
+                                μ::T) where {T}
+    return f + v' * h + (μ / 2) * (h' * h)
+end
+
+function least_squares_multipliers(Jh::AbstractMatrix{T}, ∇f::AbstractVector{T}) where {T}
+    δ = T(1e-8)
+    return (Jh * Jh' + δ * I) \ (Jh * ∇f)
+end
+
+function fletcher_merit(f::T, h::AbstractVector{T}, ∇f::AbstractVector{T},
+                        Jh::AbstractMatrix{T}, μ::T) where {T}
+    λ = least_squares_multipliers(Jh, ∇f)
+    return f - λ' * h + (μ / 2) * (h' * h)
 end
 
 function solve!(
@@ -293,6 +319,7 @@ function solve!(
 ) where {T}
     inner_settings = get_inner_settings(solver)
     outer_settings = get_outer_settings(solver)
+    μ = outer_settings.μ_init
     for k = 1:outer_settings.max_iter
         x = primal(solver)
         λ = inequality_duals(solver)
@@ -357,10 +384,13 @@ function solve!(
         # Recover full step and multipliers
         pₖ = Y * p_y + Z * p_z
 
-        # Equality multipliers: (Jh·Y)ᵀ v_new = Yᵀ(∇f + ∇²L·pₖ)
-        v_new = JhY' \ (Y' * (▽f + ▽²L * pₖ))
+        # QP multiplier estimates
+        v_qp = JhY' \ (Y' * (▽f + ▽²L * pₖ))
+        λ_qp = l_red
 
-        λ_new = l_red
+        # Deltas for step-form update
+        dv = v_qp - v
+        dλ = λ_qp - λ
 
         if expose_guts
             push!(
@@ -369,17 +399,68 @@ function solve!(
             )
         end
 
+        # ── Step length: backtracking Armijo ──
+        # Update μ by (18.36): μ ≥ (∇fᵀp + (σ/2)pᵀ∇²Lp) / ((1−ρ)||h||₁)
+        # σ = 1 if pᵀ∇²L p > 0, else 0 (equation 18.37)
+        pBp = pₖ' * ▽²L * pₖ
+        σ = pBp > 0 ? T(1) : T(0)
+        denom = (1 - T(0.1)) * sum(abs, h; init=zero(T))
+        if denom > 0
+            μ_min = (▽f' * pₖ + (σ / 2) * pBp) / denom
+            # TODO: This max() implements exactly what "Numerical Optimization
+            # Nocedal & Wright" says: "If the value of µ from the previous
+            # iteration of the SQP method satisfies (18.36), it is left
+            # unchanged" might need to add a decay mechanism to handle badly
+            # scaled early steps.
+            μ = max(μ, μ_min)
+        end
+
+        if outer_settings.merit_function == :fletcher
+            # φ_F(x) = f(x) − λ(x)ᵀh(x) + (μ/2)||h(x)||²
+            # λ(x) = (Jh·Jhᵀ)⁻¹Jh·∇f
+            # ∇φ_F = ∇f − Jhᵀλ + μ·Jhᵀh − ∇λ·h
+            λ_ls = least_squares_multipliers(Jh, ▽f)
+            φ_curr = f - λ_ls' * h + (μ / 2) * (h' * h)
+            # the ∇λ·h term requires ∂²c and ∂²f (third-order tensor), which is
+            # expensive to compute. Dropped for now; vanishes as h→0.
+            ∇φᵀpₖ = (▽f - Jh' * λ_ls + μ * Jh' * h)' * pₖ
+        else  # :standard
+            # φ_S(x) = f(x) + vᵀh(x) + (μ/2)||h(x)||²
+            # ∇φ_S = ∇f + Jhᵀv + μ·Jhᵀh
+            φ_curr = standard_auglag_merit(f, h, v, μ)
+            ∇φᵀpₖ = (▽f + Jh' * (v + μ * h))' * pₖ
+        end
+
+        α = one(T)
+        for _ in 1:20
+            x_trial = deepcopy(x)
+            x_trial.knotpoints .+= α * pₖ
+            f_trial = evaluate_objective(solver.f, x_trial)
+            h_trial = evaluate_constraints(solver.h, x_trial)
+            if outer_settings.merit_function == :fletcher
+                Jh_trial = jacobian(solver.h, x_trial)
+                ▽f_trial = super_gradient(solver.f, x_trial)
+                φ_trial = fletcher_merit(f_trial, h_trial, ▽f_trial, Jh_trial, μ)
+            else
+                φ_trial = standard_auglag_merit(f_trial, h_trial, v, μ)
+            end
+            # Armijo sufficient decrease: φ(x+αp) ≤ φ(x) + c·α·∇φᵀp  (c = 1e-4)
+            if φ_trial ≤ φ_curr + T(1e-4) * α * ∇φᵀpₖ
+                break
+            end
+            α *= T(0.5)
+        end
+
         # solution step
-        α = outer_settings.max_step_fraction
         kp = knotpoints(x)
         @. kp += α * pₖ
 
-        # Update multipliers (damped)
-        if !isempty(λ_new)
-            @. λ = (1 - α) * λ + α * λ_new
+        # Update multipliers in step form: v_{k+1} = v_k + α·dv
+        if !isempty(dλ)
+            @. λ += α * dλ
         end
-        if !isempty(v_new)
-            @. v = (1 - α) * v + α * v_new
+        if !isempty(dv)
+            @. v += α * dv
         end
 
         if expose_guts && k == outer_settings.max_iter
