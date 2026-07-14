@@ -119,6 +119,15 @@ function jacobian(
     funcs::AbstractVector{<:AdjacentKnotPointsFunction},
     Z::DiscreteTrajectory{T},
 ) where {T}
+    # TODO: row offsets are wrong when constraints have mixed outputdim.
+    # `row₀ = (i - 1) * band_height` uses the *current* function's height, not the
+    # cumulative height of previous functions. With e.g. SeparatedHermiteSimpson
+    # (outputdim=4) stacked with boundary ConicConstraints (outputdim=2), later
+    # blocks overwrite earlier rows and trailing rows stay zero — so the hand-built
+    # Jh is rank-deficient even when the true Jacobian (via super_jacobian /
+    # ForwardDiff through evaluate_constraints) is full rank. Fix: accumulate
+    # row₀ from sum of prior length(indices(f))*outputdim(f). Same pattern may
+    # affect gradient(Val{Stack}, ...) above.
     m = sum(length(indices(func)) * outputdim(func) for func in funcs)
     n = length(knotpoints(Z))
     J_vstacked = zeros(T, m, n)
