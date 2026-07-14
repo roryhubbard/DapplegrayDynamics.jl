@@ -275,25 +275,95 @@ function solve_qp(
 end
 
 # ──── Null-space decomposition ────
+#
+# references:
+# - "General Reduction Strategies For Linear Constraints" subsection of section 15.3 "Elimination of Variables" of Numerical Optimization, Nocedal & Wright (Second Edition)
+# - Section 3.4. "Reduced Hessian SQP Methods" of Sequential Quadratic Programming, Paul T. Boggs (1996)
+#
+# Equality-constrained SQP step (ignoring inequalities):
+#
+#   min_p   ∇fᵀ p + ½ pᵀ ∇²L p
+#   s.t.    Jh p + h = 0          (Jh is m×n, h ∈ ℝᵐ, n ≥ m)
+#
+# Factor the search direction in an orthonormal splitting of ℝⁿ tied to Jh:
+#
+#   range(Jhᵀ)  ⊂ ℝⁿ   — normal to the linearized constraint manifold  (Y ∈ ℝⁿˣᵐ)
+#   null(Jh)    ⊂ ℝⁿ   — tangent to the linearized constraint manifold  (Z ∈ ℝⁿˣ⁽ⁿ⁻ᵐ⁾)
+#
+# so any p ∈ ℝⁿ is written uniquely as
+#
+#   p = Y p_y + Z p_z.
+#
+# Substitute into the linearized constraint:
+#
+#   Jh p = Jh Y p_y + Jh Z p_z = −h.
+#
+# By construction Jh Z = 0, so the range-space coefficient is fixed by
+#
+#   (Jh Y) p_y = −h    ⇒    p_y = −(Jh Y) \ h,
+#
+# and the free variable p_z is chosen by a reduced QP on Z.
+# The same JhY ≔ Jh Y is reused for equality-multiplier recovery from QP
+# stationarity (L = f + vᵀ h + …):
+#
+#   ∇f + ∇²L p + Jhᵀ v = 0.                         (KKT / ∇_p ℒ = 0)
+#
+# Split the residual in the orthonormal basis [Y Z]. The null-space block is
+# already satisfied by construction of the reduced step (Zᵀ(∇f+∇²L p) = 0 when
+# there are no inequalities, or is handled by the reduced QP duals), so drop it
+# and keep only the range-space block — left-multiply by Yᵀ:
+#
+#   Yᵀ(∇f + ∇²L p) + Yᵀ Jhᵀ v = 0.
+#
+# With Jh Y = JhY and Yᵀ Y = I we have Yᵀ Jhᵀ = JhYᵀ, hence
+#
+#   JhYᵀ v = −Yᵀ(∇f + ∇²L p).
+#
+# Both QR and SVD of Jhᵀ (n×m) produce orthonormal [Y Z] with the properties
+# above; they differ only in how JhY is obtained from the factorization.
 
-function compute_null_range_bases(Jhᵀ::Matrix{T}) where {T}
+function compute_null_range_bases(Jhᵀ::Matrix{T}; svd::Bool = false) where {T}
     n, m = size(Jhᵀ)
-    F = qr(Jhᵀ)
-    Y = Matrix(F.Q)
-    Q_full = F.Q * I
-    # Rank detection: Hermite-Simpson constraints become linearly dependent
-    # when velocity is zero (initial straight-line trajectory). The dynamics
-    # equations for θ̈ at consecutive collocation points have identical structure.
-    # Dropping columns where |R[i,i]| ≈ 0 moves the redundant directions from
-    # the range space Y into the null space Z, keeping JhY well-conditioned.
-    # TODO: consider just usig SVD
-    Rdiag = abs.(diag(F.R))
-    r = count(Rdiag .> T(1e-8) * maximum(Rdiag))
-    Y = Y[:, 1:r]
-    Z = Q_full[:, r+1:n]
-    # Jh·Y = R₁ᵀ (from Aᵀ = Y·R₁ → Jh·Y = R₁ᵀ)
-    JhY = F.R[1:r, 1:r]'
-    return Y, Z, JhY
+    if svd
+        # Full SVD (σ sorted descending):
+        #   Jhᵀ = U Σ Vᵀ,   U ∈ ℝⁿˣⁿ,  Σ = diag(σ) ∈ ℝᵐˣᵐ,  V ∈ ℝᵐˣᵐ
+        #          = [Y Z] [Σ; 0] Vᵀ
+        # with Y = U[:, 1:m], Z = U[:, m+1:n].
+        #
+        # Economy form used below: Jhᵀ = Y Σ Vᵀ.
+        # Transpose both sides:
+        #   Jh = V Σ Yᵀ.
+        # Multiply on the right by Y (Yᵀ Y = I_m, Yᵀ Z = 0):
+        #   Jh Y = V Σ Yᵀ Y = V Σ,
+        #   Jh Z = V Σ Yᵀ Z = 0.
+        # So JhY = V Σ is dense (not triangular) but nonsingular when rank(Jh)=m.
+        F = svd(Jhᵀ; full = true)
+        σ = F.S
+        println("SVD σ_min=$(last(σ)), σ_max=$(first(σ))")
+        Y = F.U[:, 1:m]
+        Z = F.U[:, m+1:n]
+        JhY = F.V * Diagonal(σ)
+        return Y, Z, JhY
+    else
+        # Thin QR of the constraint transpose:
+        #   Jhᵀ = Q₁ R = Y R,
+        # where Y = Q₁ ∈ ℝⁿˣᵐ has orthonormal columns (range basis) and
+        # R ∈ ℝᵐˣᵐ is upper triangular. Full Q = [Y Z] extends to an
+        # orthonormal basis of ℝⁿ, so Z = Q₂ spans null(Jh).
+        #
+        # From Jhᵀ = Y R, transpose both sides:
+        #   Jh = Rᵀ Yᵀ.
+        # Multiply on the right by Y / Z (Yᵀ Y = I_m, Yᵀ Z = 0):
+        #   Jh Y = Rᵀ Yᵀ Y = Rᵀ,
+        #   Jh Z = Rᵀ Yᵀ Z = 0.
+        # So JhY = Rᵀ is triangular — cheap to factor for p_y and v.
+        F = qr(Jhᵀ)
+        Y = Matrix(F.Q)              # thin Q = Q₁ (n×m)
+        Q_full = F.Q * I             # full Q = [Y Z] (n×n)
+        Z = Q_full[:, m+1:end]       # Q₂
+        JhY = F.R'
+        return Y, Z, JhY
+    end
 end
 
 function standard_auglag_merit(f::T, h::AbstractVector{T}, v::AbstractVector{T},
@@ -350,42 +420,45 @@ function solve!(
         ▽²L = ▽²f + ▽²g + ▽²h
 
         # ── Null-space decomposition ──
+        # p = Y p_y + Z p_z  with  range(Y)=range(Jhᵀ),  range(Z)=null(Jh)
+        # (see compute_null_range_bases). Linearized equalities fix p_y only:
+        #   Jh p = Jh Y p_y = −h  (since Jh Z = 0).
         ∇h = Matrix(Jh')
         Y, Z, JhY = compute_null_range_bases(∇h)
 
-        # Range-space step: satisfies Jh·p = −h exactly
+        # Range-space step: (Jh Y) p_y = −h
         p_y = -JhY \ h
 
-        # Reduced Hessian: Zᵀ∇²L Z (PSD after regularization)
+        # Reduced QP in p_z (null-space / tangential step).
+        # With p = Y p_y + Z p_z and p_y fixed, the quadratic model becomes
+        #   min_{p_z}  ½ p_zᵀ (Zᵀ ∇²L Z) p_z + (Zᵀ(∇L + ∇²L Y p_y))ᵀ p_z
+        # and linearized inequalities g + Jg p ≤ 0 become
+        #   g + Jg Y p_y + Jg Z p_z ≤ 0.
         R_red = Z' * ▽²L * Z
         λ_min_R = minimum(eigvals(Symmetric(R_red)))
         if λ_min_R ≤ 0
             R_red .+= (abs(λ_min_R) + 1e-8) * I(size(R_red, 1))
         end
 
-        # Reduced gradient: Zᵀ(∇L + ∇²L·Y·p_y)
         g_red = Z' * (▽L + ▽²L * (Y * p_y))
-
-        # Reduced inequality: g + Jg·(Y·p_y) + Jg·Z·p_z ≤ 0
         g_ineq_red = g + Jg * (Y * p_y)
         Jg_red = Jg * Z
 
-        # ── Solve reduced-space QP with Clarabel ──
-        # min  ½p_zᵀR_red p_z + g_redᵀp_z
-        # s.t. g_ineq_red + Jg_red·p_z ≤ 0
-        # solve_qp encodes: Ap ≤ b via NonnegativeCone
-        # with A = Jg_red, b = −g_ineq_red
+        # solve_qp encodes Ap ≤ b via NonnegativeCone with A = Jg_red, b = −g_ineq_red
         p_z, l_red = solve_qp(
             -g_ineq_red, Jg_red,
             T[], zeros(T, 0, size(R_red, 1)),
             g_red, R_red, inner_settings,
         )
 
-        # Recover full step and multipliers
+        # Full step in the original coordinates
         pₖ = Y * p_y + Z * p_z
 
-        # QP multiplier estimates
-        v_qp = JhY' \ (Y' * (▽f + ▽²L * pₖ))
+        # Equality multipliers from KKT stationarity (see null-space header):
+        #   ∇f + ∇²L p + Jhᵀ v = 0
+        # drop null-space block (Zᵀ · …), keep range-space block (Yᵀ · …):
+        #   JhYᵀ v = −Yᵀ(∇f + ∇²L p)
+        v_qp = -(JhY' \ (Y' * (▽f + ▽²L * pₖ)))
         λ_qp = l_red
 
         # Deltas for step-form update
